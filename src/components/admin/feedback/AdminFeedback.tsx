@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   MessageCircle, 
   Star, 
@@ -56,55 +55,102 @@ const AdminFeedback: React.FC = () => {
   const fetchFeedbacks = async () => {
     try {
       setLoading(true);
-      
-      const base = () =>
-        supabase
-          .from("parent_feedback")
-          .select(
-            `
-          *,
-          profiles!parent_feedback_guardian_profile_id_fkey ( username ),
-          students!parent_feedback_student_id_fkey ( name ),
-          drivers!parent_feedback_driver_id_fkey ( name )
-        `,
-          )
-          .order("created_at", { ascending: false });
 
-      const fallback = () =>
-        supabase
-          .from("parent_feedback")
-          .select(
-            `
-          *,
-          profiles ( username ),
-          students ( name ),
-          drivers ( name )
-        `,
-          )
-          .order("created_at", { ascending: false });
+      // Avoid PostgREST embedded resources — some projects lack FK hints in the schema cache
+      // ("Could not find a relationship between parent_feedback and profiles").
+      let fbQuery = supabase
+        .from("parent_feedback")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      let query = base();
       if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
+        fbQuery = fbQuery.eq("status", statusFilter);
       }
       if (typeFilter !== "all") {
-        query = query.eq("feedback_type", typeFilter);
+        fbQuery = fbQuery.eq("feedback_type", typeFilter);
       }
 
-      let { data, error } = await query;
+      const { data: rows, error: fbError } = await fbQuery;
+      if (fbError) throw fbError;
 
-      if (error) {
-        let q2 = fallback();
-        if (statusFilter !== "all") q2 = q2.eq("status", statusFilter);
-        if (typeFilter !== "all") q2 = q2.eq("feedback_type", typeFilter);
-        const second = await q2;
-        data = second.data;
-        error = second.error;
+      const list = rows ?? [];
+      if (list.length === 0) {
+        setFeedbacks([]);
+        return;
       }
 
-      if (error) throw error;
+      const guardianIds = [
+        ...new Set(
+          list
+            .map((r) => r.guardian_profile_id as string | undefined)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      const studentIds = [
+        ...new Set(
+          list
+            .map((r) => r.student_id as string | undefined)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      const driverIds = [
+        ...new Set(
+          list
+            .map((r) => r.driver_id as string | undefined)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
 
-      setFeedbacks((data as unknown as FeedbackItem[]) || []);
+      const profileMap = new Map<string, { username: string }>();
+      const studentMap = new Map<string, { name: string }>();
+      const driverMap = new Map<string, { name: string }>();
+
+      if (guardianIds.length > 0) {
+        const { data: profs, error: e1 } = await supabase
+          .from("profiles")
+          .select("id, username")
+          .in("id", guardianIds);
+        if (e1) console.warn("[feedback] profiles:", e1.message);
+        profs?.forEach((p) => {
+          if (p.id) profileMap.set(p.id, { username: p.username ?? "—" });
+        });
+      }
+
+      if (studentIds.length > 0) {
+        const { data: studs, error: e2 } = await supabase
+          .from("students")
+          .select("id, name")
+          .in("id", studentIds);
+        if (e2) console.warn("[feedback] students:", e2.message);
+        studs?.forEach((s) => {
+          if (s.id) studentMap.set(s.id, { name: s.name ?? "—" });
+        });
+      }
+
+      if (driverIds.length > 0) {
+        const { data: drvs, error: e3 } = await supabase
+          .from("drivers")
+          .select("id, name")
+          .in("id", driverIds);
+        if (e3) console.warn("[feedback] drivers:", e3.message);
+        drvs?.forEach((d) => {
+          if (d.id) driverMap.set(d.id, { name: d.name ?? "—" });
+        });
+      }
+
+      const merged: FeedbackItem[] = list.map((row) => {
+        const guardianId = row.guardian_profile_id as string | undefined;
+        const sid = row.student_id as string | undefined;
+        const did = row.driver_id as string | undefined;
+        return {
+          ...(row as FeedbackItem),
+          profiles: guardianId ? profileMap.get(guardianId) ?? null : null,
+          students: sid ? studentMap.get(sid) ?? null : null,
+          drivers: did ? driverMap.get(did) ?? null : null,
+        };
+      });
+
+      setFeedbacks(merged);
     } catch (error: unknown) {
       console.error("Error fetching feedbacks:", error);
       const msg =
