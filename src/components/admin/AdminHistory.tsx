@@ -33,85 +33,41 @@ const AdminHistory: React.FC = () => {
   const fetchTripHistory = async () => {
     try {
       setLoading(true);
-      console.log('Fetching trip history...');
-      
-      // First try to get from trip_sessions table
-      const tripSessions = await tripService.getTripHistory(100);
-      console.log('Raw trip sessions:', tripSessions);
-      
-      if (tripSessions.length > 0) {
-        const transformedTrips: TripRecord[] = tripSessions.map((session: any) => ({
+      const tripSessions = await tripService.getTripHistory(200);
+
+      const transformedTrips: TripRecord[] = tripSessions.map((session) => {
+        const driverName = session.drivers?.name?.trim() || "Unknown driver";
+        const routeName = session.routes?.name?.trim() || "No route assigned";
+        const st = session.status === "active" ? "in-progress" : session.status;
+        return {
           id: session.id,
-          busNumber: session.bus_number,
-          driverName: session.driver?.name || 'Unknown Driver',
+          busNumber: session.bus_number || "—",
+          driverName,
           date: new Date(session.start_time),
-          startTime: new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          endTime: session.end_time ? new Date(session.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing',
-          route: session.route?.name || 'No Route Assigned',
-          status: session.status === 'active' ? 'in-progress' : session.status
-        }));
-        setTrips(transformedTrips);
-      } else {
-        // Fallback: Create sample data from pickup_drop_history
-        console.log('No trip sessions found, creating sample data from pickup/drop history...');
-        
-        // Generate some sample trip data based on existing structure
-        const sampleTrips: TripRecord[] = [
-          {
-            id: '1',
-            busNumber: 'BUS-001',
-            driverName: 'John Smith',
-            date: new Date(Date.now() - 86400000), // Yesterday
-            startTime: '07:30',
-            endTime: '15:45',
-            route: 'North Route',
-            status: 'completed'
-          },
-          {
-            id: '2',
-            busNumber: 'BUS-002',
-            driverName: 'Sarah Johnson',
-            date: new Date(Date.now() - 86400000), // Yesterday
-            startTime: '07:45',
-            endTime: '16:00',
-            route: 'South Route',
-            status: 'completed'
-          },
-          {
-            id: '3',
-            busNumber: 'BUS-001',
-            driverName: 'John Smith',
-            date: new Date(), // Today
-            startTime: '07:30',
-            endTime: 'Ongoing',
-            route: 'North Route',
-            status: 'active'
-          }
-        ];
-        setTrips(sampleTrips);
-      }
-    } catch (error) {
-      console.error('Error fetching trip history:', error);
+          startTime: new Date(session.start_time).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          endTime: session.end_time
+            ? new Date(session.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "Ongoing",
+          route: routeName,
+          status: st as TripRecord["status"],
+        };
+      });
+      setTrips(transformedTrips);
+    } catch (error: unknown) {
+      console.error("Error fetching trip history:", error);
+      const msg =
+        error && typeof error === "object" && "message" in error
+          ? String((error as { message: string }).message)
+          : "Could not load trip history from the database.";
       toast({
         title: "Error",
-        description: "Failed to load trip history. Showing sample data.",
-        variant: "destructive"
+        description: msg,
+        variant: "destructive",
       });
-      
-      // Show sample data even on error
-      const sampleTrips: TripRecord[] = [
-        {
-          id: '1',
-          busNumber: 'BUS-001',
-          driverName: 'Sample Driver',
-          date: new Date(),
-          startTime: '07:30',
-          endTime: 'Ongoing',
-          route: 'Sample Route',
-          status: 'active'
-        }
-      ];
-      setTrips(sampleTrips);
+      setTrips([]);
     } finally {
       setLoading(false);
     }

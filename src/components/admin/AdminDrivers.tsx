@@ -200,11 +200,12 @@ const AdminDrivers: React.FC = () => {
         onDeleteDriver={handleDeleteDriver}
       />
       
-      <QrCodeDialog 
-        isOpen={!!currentQrCode} 
+      <QrCodeDialog
+        isOpen={!!currentQrCode}
         onClose={handleCloseQrDialog}
         qrCodeData={currentQrCode}
         credentials={selectedDriverCredentials}
+        loginPageUrl={loginOrigin}
         welcomeContext={qrWelcomeContext?.mobile ? qrWelcomeContext : null}
       />
 

@@ -60,6 +60,22 @@ interface ChatInterfaceProps {
   className?: string;
 }
 
+function messageRelevantToUser(m: ChatMessage, uid: string) {
+  if (m.sender_id === uid || m.recipient_id === uid) return true;
+  if (m.recipient_type === "broadcast" && m.recipient_id == null) return true;
+  return false;
+}
+
+function messageMatchesThread(m: ChatMessage, uid: string, thread: Recipient | null) {
+  if (!messageRelevantToUser(m, uid)) return false;
+  if (!thread) return true;
+  if (m.recipient_type === "broadcast" && m.recipient_id == null) return true;
+  const a = m.sender_id;
+  const b = m.recipient_id;
+  const t = thread.id;
+  return (a === uid && b === t) || (a === t && b === uid);
+}
+
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   isMinimized = false, 
   onToggleMinimize,
@@ -73,7 +89,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showRecipients, setShowRecipients] = useState(false);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const selectedRecipientRef = useRef<Recipient | null>(null);
+  selectedRecipientRef.current = selectedRecipient;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -175,26 +193,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             })));
           }
 
-          // Get the driver assigned to their child
-          const { data: studentDriver } = await supabase
-            .from('students')
-            .select(`
+          // Drivers for this guardian’s students (avoid .single() — multiple children possible)
+          const { data: studentRows } = await supabase
+            .from("students")
+            .select(
+              `
               driver_id,
-              drivers(profile_id, name)
-            `)
-            .eq('guardian_profile_id', user.id)
-            .not('driver_id', 'is', null)
-            .single();
+              drivers ( profile_id, name )
+            `,
+            )
+            .eq("guardian_profile_id", user.id)
+            .not("driver_id", "is", null);
 
-          const driverRel = studentDriver?.drivers;
-          const driverRow = Array.isArray(driverRel) ? driverRel[0] : driverRel;
-          if (driverRow?.profile_id) {
-            recipientsList.push({
-              id: driverRow.profile_id,
-              name: driverRow.name,
-              type: "driver" as const,
-              online: true,
-            });
+          const seenDrivers = new Set<string>();
+          for (const row of studentRows || []) {
+            const driverRel = row.drivers;
+            const driverRow = Array.isArray(driverRel) ? driverRel[0] : driverRel;
+            const pid = driverRow?.profile_id;
+            if (pid && !seenDrivers.has(pid)) {
+              seenDrivers.add(pid);
+              recipientsList.push({
+                id: pid,
+                name: driverRow.name || "Driver",
+                type: "driver" as const,
+                online: true,
+              });
+            }
           }
         }
 
@@ -207,30 +231,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     fetchRecipients();
   }, [user]);
 
-  // Subscribe to real-time messages
+  // Subscribe to real-time inserts (per-user channel; thread-scoped when a contact is selected)
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel('chat_messages')
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'chat_messages',
-          filter: `or(sender_id.eq.${user.id},recipient_id.eq.${user.id},recipient_type.eq.broadcast)`
-        },
+      .channel(`chat_messages:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages" },
         (payload) => {
           const newMessage = payload.new as ChatMessage;
-          setMessages(prev => [...prev, newMessage]);
-          
-          // Show notification for emergency messages
+          if (!messageRelevantToUser(newMessage, user.id)) return;
+          const thread = selectedRecipientRef.current;
+          if (!messageMatchesThread(newMessage, user.id, thread)) return;
+
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === newMessage.id)) return prev;
+            return [...prev, newMessage].sort(
+              (x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime(),
+            );
+          });
+
           if (newMessage.is_emergency && newMessage.sender_id !== user.id) {
-            toast.error(`Emergency: ${newMessage.message}`, {
-              duration: 10000,
-            });
+            toast.error(`Emergency: ${newMessage.message}`, { duration: 10000 });
           }
-        }
+        },
       )
       .subscribe();
 
@@ -239,30 +265,57 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
-  }, [user]);
+  }, [user, selectedRecipient]);
 
-  // Fetch existing messages
+  // Load history: full inbox when no contact selected; direct thread (+ broadcasts) when selected
   useEffect(() => {
     const fetchMessages = async () => {
-      if (!user || !selectedRecipient) return;
+      if (!user) return;
 
       try {
-        const { data, error } = await supabase
-          .from('chat_messages')
-          .select('*')
-          .or(`and(sender_id.eq.${user.id},recipient_id.eq.${selectedRecipient.id}),and(sender_id.eq.${selectedRecipient.id},recipient_id.eq.${user.id}),recipient_type.eq.broadcast`)
-          .order('created_at', { ascending: true });
+        let query = supabase.from("chat_messages").select("*");
 
+        if (selectedRecipient) {
+          const rid = selectedRecipient.id;
+          query = query
+            .or(
+              `and(sender_id.eq.${user.id},recipient_id.eq.${rid}),and(sender_id.eq.${rid},recipient_id.eq.${user.id}),and(recipient_type.eq.broadcast,recipient_id.is.null)`,
+            )
+            .order("created_at", { ascending: true });
+        } else {
+          query = query
+            .or(
+              `sender_id.eq.${user.id},recipient_id.eq.${user.id},and(recipient_type.eq.broadcast,recipient_id.is.null)`,
+            )
+            .order("created_at", { ascending: true })
+            .limit(300);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
-        setMessages((data || []) as ChatMessage[]);
+
+        const rows = (data || []) as ChatMessage[];
+        const sorted = [...rows].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        );
+
+        if (selectedRecipient) {
+          setMessages(
+            sorted.filter((m) => messageMatchesThread(m, user.id, selectedRecipient)),
+          );
+        } else {
+          setMessages(sorted);
+        }
       } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error("Error fetching messages:", error);
+        toast.error("Could not load chat history.");
       }
     };
 
-    fetchMessages();
+    void fetchMessages();
   }, [user, selectedRecipient]);
 
   const sendMessage = async (messageType: 'text' | 'emergency' = 'text') => {

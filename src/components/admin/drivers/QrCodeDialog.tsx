@@ -1,9 +1,13 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
-import { MessageCircle, QrCode, Shield } from "lucide-react";
+import { FileDown, MessageCircle, QrCode, Shield } from "lucide-react";
 import { driverWelcomeMessage, openWhatsAppInvite } from "@/utils/whatsappInvite";
+import { downloadDriverQrPdf } from "@/utils/driverQrPdf";
+import { toast } from "sonner";
 
 interface DriverCredentials {
   username: string;
@@ -15,6 +19,8 @@ interface QrCodeDialogProps {
   onClose: () => void;
   qrCodeData: string | null;
   credentials: DriverCredentials | null;
+  /** Login page URL for printed instructions (e.g. window.location.origin). */
+  loginPageUrl: string;
   /** When set, shows a button to open WhatsApp with a welcome message (wa.me). */
   welcomeContext?: {
     name: string;
@@ -30,8 +36,11 @@ const QrCodeDialog: React.FC<QrCodeDialogProps> = ({
   onClose,
   qrCodeData,
   credentials,
+  loginPageUrl,
   welcomeContext,
 }) => {
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   const sendWelcomeWa = () => {
     if (!welcomeContext) return;
     const pin =
@@ -49,8 +58,37 @@ const QrCodeDialog: React.FC<QrCodeDialogProps> = ({
     );
   };
 
+  const handleDownloadPdf = async () => {
+    if (!qrCodeData || !credentials) {
+      toast.error("QR or login details are missing.");
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      await downloadDriverQrPdf({
+        qrPayload: qrCodeData,
+        driverName: welcomeContext?.name ?? "Driver",
+        busNumber: welcomeContext?.busNumber ?? "—",
+        mobileUsername: credentials.username,
+        pin: welcomeContext?.pin,
+        loginUrl: loginPageUrl.trim() || "https://",
+      });
+      toast.success("PDF downloaded (A4, ready to print).");
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not create PDF. Try again or use a different browser.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -89,6 +127,17 @@ const QrCodeDialog: React.FC<QrCodeDialogProps> = ({
               </p>
             </div>
           )}
+
+          <Button
+            type="button"
+            variant="default"
+            className="w-full gap-2"
+            disabled={!qrCodeData || !credentials || pdfLoading}
+            onClick={() => void handleDownloadPdf()}
+          >
+            <FileDown className="h-4 w-4" />
+            {pdfLoading ? "Building PDF…" : "Download A4 PDF (print)"}
+          </Button>
 
           {welcomeContext && (
             <Button type="button" variant="secondary" className="w-full gap-2" onClick={sendWelcomeWa}>

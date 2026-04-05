@@ -8,9 +8,13 @@ export interface TripSession {
   start_time: string;
   end_time?: string;
   route_id?: string;
-  status: 'active' | 'completed' | 'cancelled';
+  status: "active" | "completed" | "cancelled";
   created_at: string;
   updated_at: string;
+  /** Joined from `drivers` (PostgREST embed). */
+  drivers?: { name: string; mobile_number?: string | null } | null;
+  /** Joined from `routes` (PostgREST embed). */
+  routes?: { name: string; start_point?: string | null; end_point?: string | null } | null;
 }
 
 export interface CreateTripData {
@@ -96,28 +100,40 @@ class TripService {
 
   // Get trip history
   async getTripHistory(limit: number = 50): Promise<TripSession[]> {
-    const { data, error } = await supabase
-      .from('trip_sessions')
-      .select(`
+    const withFkeys = await supabase
+      .from("trip_sessions")
+      .select(
+        `
         *,
-        driver:drivers(
-          name,
-          mobile_number
-        ),
-        route:routes(
-          name,
-          start_point,
-          end_point
-        )
-      `)
-      .order('start_time', { ascending: false })
+        drivers!trip_sessions_driver_id_fkey ( name, mobile_number ),
+        routes!trip_sessions_route_id_fkey ( name, start_point, end_point )
+      `,
+      )
+      .order("start_time", { ascending: false })
       .limit(limit);
 
-    if (error) {
-      throw error;
+    if (!withFkeys.error) {
+      return (withFkeys.data || []) as TripSession[];
     }
 
-    return (data || []) as TripSession[];
+    // Some DBs use different FK names; infer relationships from column names.
+    const inferred = await supabase
+      .from("trip_sessions")
+      .select(
+        `
+        *,
+        drivers ( name, mobile_number ),
+        routes ( name, start_point, end_point )
+      `,
+      )
+      .order("start_time", { ascending: false })
+      .limit(limit);
+
+    if (inferred.error) {
+      throw inferred.error;
+    }
+
+    return (inferred.data || []) as TripSession[];
   }
 
   // Get driver's active trip

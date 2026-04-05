@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/integrations/supabase/client";
 
 interface ETACalculation {
   studentId: string;
@@ -12,7 +12,7 @@ interface BusLocation {
   latitude: number;
   longitude: number;
   timestamp: string;
-  speed?: number;
+  speedKmh?: number;
   heading?: number;
 }
 
@@ -22,11 +22,14 @@ interface PickupLocation {
   address: string;
 }
 
+/** Typical school-bus average when GPS speed is missing or unreliable (km/h). */
+const DEFAULT_ROAD_SPEED_KMH = 28;
+
 class ETACalculationService {
   private static instance: ETACalculationService;
   private cachedETAs: Map<string, ETACalculation> = new Map();
-  private updateInterval: NodeJS.Timeout | null = null;
-  private readonly CACHE_DURATION = 30000; // 30 seconds
+  private updateInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly CACHE_DURATION = 20000;
 
   private constructor() {}
 
@@ -37,166 +40,213 @@ class ETACalculationService {
     return ETACalculationService.instance;
   }
 
-  // Calculate distance using Haversine formula
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
-  // Calculate ETA based on current speed and distance
-  private calculateETA(distance: number, speed: number, baseSpeed: number = 25): number {
-    // Use actual speed if available and reasonable, otherwise use base speed
-    const effectiveSpeed = (speed > 0 && speed <= 80) ? speed : baseSpeed;
-    return (distance / effectiveSpeed) * 60; // Convert to minutes
+  private effectiveSpeedKmh(gpsSpeed?: number | null): number {
+    if (gpsSpeed != null && Number.isFinite(gpsSpeed) && gpsSpeed >= 8 && gpsSpeed <= 90) {
+      return gpsSpeed;
+    }
+    return DEFAULT_ROAD_SPEED_KMH;
   }
 
-  // Get bus location for a specific student
+  private minutesFromDistance(distanceKm: number, speedKmh: number): number {
+    if (distanceKm <= 0 || !Number.isFinite(distanceKm)) return 0;
+    return (distanceKm / speedKmh) * 60;
+  }
+
+  private formatEtaMinutes(minutes: number): string {
+    if (minutes < 1) return "Less than 1 min";
+    if (minutes < 60) return `${Math.round(minutes)} min`;
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+  }
+
+  private async getStudentBusNumber(studentId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from("students")
+      .select("bus_number")
+      .eq("id", studentId)
+      .maybeSingle();
+    if (error || !data?.bus_number) return null;
+    const b = String(data.bus_number).trim();
+    return b || null;
+  }
+
+  /**
+   * Prefer RPC (matches driver profile_id or drivers.id). If coords missing, match live_locations by bus
+   * (same path as guardian hook) so ETA stays in sync with the map.
+   */
   private async getBusLocationForStudent(studentId: string): Promise<BusLocation | null> {
     try {
-      const { data, error } = await supabase
-        .rpc('get_student_driver_location', { student_id: studentId });
+      const { data: rpcRows, error: rpcError } = await supabase.rpc("get_student_driver_location", {
+        student_id: studentId,
+      });
 
-      if (error) throw error;
-      if (!data || data.length === 0) return null;
+      if (!rpcError && rpcRows?.length) {
+        const row = rpcRows[0] as {
+          latitude?: number | null;
+          longitude?: number | null;
+          is_active?: boolean | null;
+          last_updated?: string | null;
+        };
+        const lat = row.latitude != null ? Number(row.latitude) : NaN;
+        const lng = row.longitude != null ? Number(row.longitude) : NaN;
+        if (row.is_active === true && Number.isFinite(lat) && Number.isFinite(lng)) {
+          return {
+            latitude: lat,
+            longitude: lng,
+            timestamp: row.last_updated ?? new Date().toISOString(),
+          };
+        }
+      }
 
-      const location = data[0];
+      const bus = await this.getStudentBusNumber(studentId);
+      if (!bus) return null;
+
+      const { data: liveRows, error: liveError } = await supabase
+        .from("live_locations")
+        .select("latitude, longitude, timestamp, speed, is_active")
+        .eq("user_type", "driver")
+        .eq("bus_number", bus)
+        .eq("is_active", true)
+        .order("timestamp", { ascending: false })
+        .limit(1);
+
+      if (liveError || !liveRows?.length) return null;
+      const live = liveRows[0];
+      const lat = Number(live.latitude);
+      const lng = Number(live.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
       return {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        timestamp: location.last_updated,
-        speed: undefined, // Speed not available in current schema
-        heading: undefined // Heading not available in current schema
+        latitude: lat,
+        longitude: lng,
+        timestamp: live.timestamp,
+        speedKmh: live.speed != null ? Number(live.speed) : undefined,
       };
-    } catch (error) {
-      console.error('Error getting bus location:', error);
+    } catch (e) {
+      console.error("getBusLocationForStudent:", e);
       return null;
     }
   }
 
-  // Get pickup location for a student
   private async getPickupLocation(studentId: string): Promise<PickupLocation | null> {
     try {
       const { data: student, error } = await supabase
-        .from('students')
-        .select('pickup_location_lat, pickup_location_lng, pickup_point')
-        .eq('id', studentId)
+        .from("students")
+        .select("pickup_location_lat, pickup_location_lng, pickup_point")
+        .eq("id", studentId)
         .single();
 
       if (error) throw error;
-      if (!student.pickup_location_lat || !student.pickup_location_lng) return null;
+      const lat = Number(student?.pickup_location_lat);
+      const lng = Number(student?.pickup_location_lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
       return {
-        latitude: student.pickup_location_lat,
-        longitude: student.pickup_location_lng,
-        address: student.pickup_point
+        latitude: lat,
+        longitude: lng,
+        address: student.pickup_point ?? "",
       };
-    } catch (error) {
-      console.error('Error getting pickup location:', error);
+    } catch (e) {
+      console.error("getPickupLocation:", e);
       return null;
     }
   }
 
-  // Calculate ETA for a specific student
   async calculateETAForStudent(studentId: string): Promise<ETACalculation | null> {
     try {
-      // Check cache first
       const cached = this.cachedETAs.get(studentId);
       if (cached && Date.now() - cached.lastUpdated.getTime() < this.CACHE_DURATION) {
         return cached;
       }
 
-      // Get bus and pickup locations
       const [busLocation, pickupLocation] = await Promise.all([
         this.getBusLocationForStudent(studentId),
-        this.getPickupLocation(studentId)
+        this.getPickupLocation(studentId),
       ]);
 
       if (!busLocation || !pickupLocation) return null;
 
-      // Calculate distance
       const distance = this.calculateDistance(
         busLocation.latitude,
         busLocation.longitude,
         pickupLocation.latitude,
-        pickupLocation.longitude
+        pickupLocation.longitude,
       );
 
-      // Check if bus is already at pickup point (within 100m)
+      if (!Number.isFinite(distance)) return null;
+
       if (distance < 0.1) {
         const eta: ETACalculation = {
           studentId,
-          estimatedArrivalTime: 'Arrived',
+          estimatedArrivalTime: "Arrived",
           distanceKm: distance,
           durationMinutes: 0,
-          lastUpdated: new Date()
+          lastUpdated: new Date(),
         };
         this.cachedETAs.set(studentId, eta);
         return eta;
       }
 
-      // Calculate ETA in minutes
-      const durationMinutes = this.calculateETA(distance, busLocation.speed || 0);
-      
-      // Calculate estimated arrival time
-      const arrivalTime = new Date();
-      arrivalTime.setMinutes(arrivalTime.getMinutes() + durationMinutes);
+      const speed = this.effectiveSpeedKmh(busLocation.speedKmh);
+      const durationMinutes = this.minutesFromDistance(distance, speed);
 
       const eta: ETACalculation = {
         studentId,
-        estimatedArrivalTime: `${Math.round(durationMinutes)} min`,
+        estimatedArrivalTime: this.formatEtaMinutes(durationMinutes),
         distanceKm: distance,
-        durationMinutes: Math.round(durationMinutes),
-        lastUpdated: new Date()
+        durationMinutes: Math.max(1, Math.round(durationMinutes)),
+        lastUpdated: new Date(),
       };
 
-      // Cache the result
       this.cachedETAs.set(studentId, eta);
       return eta;
-
-    } catch (error) {
-      console.error('Error calculating ETA:', error);
+    } catch (e) {
+      console.error("calculateETAForStudent:", e);
       return null;
     }
   }
 
-  // Calculate ETA for multiple students (for guardians with multiple children)
   async calculateETAForStudents(studentIds: string[]): Promise<Map<string, ETACalculation>> {
     const results = new Map<string, ETACalculation>();
-
-    const calculations = await Promise.allSettled(
-      studentIds.map(id => this.calculateETAForStudent(id))
-    );
-
-    calculations.forEach((result, index) => {
-      if (result.status === 'fulfilled' && result.value) {
+    const settled = await Promise.allSettled(studentIds.map((id) => this.calculateETAForStudent(id)));
+    settled.forEach((result, index) => {
+      if (result.status === "fulfilled" && result.value) {
         results.set(studentIds[index], result.value);
       }
     });
-
     return results;
   }
 
-  // Start automatic ETA updates for a guardian
   startETAUpdates(studentIds: string[], onUpdate: (etas: Map<string, ETACalculation>) => void): void {
-    this.stopETAUpdates(); // Clear any existing interval
+    this.stopETAUpdates();
 
-    this.updateInterval = setInterval(async () => {
+    const tick = async () => {
       const etas = await this.calculateETAForStudents(studentIds);
       onUpdate(etas);
-    }, 15000); // Update every 15 seconds
+    };
 
-    // Initial calculation
-    this.calculateETAForStudents(studentIds).then(onUpdate);
+    this.updateInterval = setInterval(() => {
+      void tick();
+    }, 15000);
+
+    void tick();
   }
 
-  // Stop automatic ETA updates
   stopETAUpdates(): void {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
@@ -204,34 +254,32 @@ class ETACalculationService {
     }
   }
 
-  // Get enhanced ETA information with route details
   async getEnhancedETA(studentId: string): Promise<{
     eta: ETACalculation | null;
-    busStatus: 'approaching' | 'arrived' | 'departed' | 'inactive';
+    busStatus: "approaching" | "arrived" | "departed" | "inactive";
     nextStop?: string;
   }> {
     const eta = await this.calculateETAForStudent(studentId);
-    
-    let busStatus: 'approaching' | 'arrived' | 'departed' | 'inactive' = 'inactive';
-    
+
+    let busStatus: "approaching" | "arrived" | "departed" | "inactive" = "inactive";
+
     if (eta) {
-      if (eta.estimatedArrivalTime === 'Arrived') {
-        busStatus = 'arrived';
+      if (eta.estimatedArrivalTime === "Arrived") {
+        busStatus = "arrived";
       } else if (eta.durationMinutes <= 5) {
-        busStatus = 'approaching';
+        busStatus = "approaching";
       } else {
-        busStatus = 'approaching';
+        busStatus = "approaching";
       }
     }
 
     return {
       eta,
       busStatus,
-      nextStop: eta ? 'Your pickup point' : undefined
+      nextStop: eta ? "Your pickup point" : undefined,
     };
   }
 
-  // Clear cache for specific student
   clearCache(studentId?: string): void {
     if (studentId) {
       this.cachedETAs.delete(studentId);
@@ -240,27 +288,26 @@ class ETACalculationService {
     }
   }
 
-  // Get cache statistics
-  getCacheStats(): { 
-    totalCached: number; 
-    avgAge: number; 
+  getCacheStats(): {
+    totalCached: number;
+    avgAge: number;
     oldestEntry: number;
   } {
     const now = Date.now();
     const entries = Array.from(this.cachedETAs.values());
-    
+
     if (entries.length === 0) {
       return { totalCached: 0, avgAge: 0, oldestEntry: 0 };
     }
 
-    const ages = entries.map(eta => now - eta.lastUpdated.getTime());
-    const avgAge = ages.reduce((sum, age) => sum + age, 0) / ages.length;
+    const ages = entries.map((e) => now - e.lastUpdated.getTime());
+    const avgAge = ages.reduce((s, a) => s + a, 0) / ages.length;
     const oldestEntry = Math.max(...ages);
 
     return {
       totalCached: entries.length,
-      avgAge: Math.round(avgAge / 1000), // Convert to seconds
-      oldestEntry: Math.round(oldestEntry / 1000) // Convert to seconds
+      avgAge: Math.round(avgAge / 1000),
+      oldestEntry: Math.round(oldestEntry / 1000),
     };
   }
 }

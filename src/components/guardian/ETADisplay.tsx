@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,40 +19,42 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
   const [autoUpdate, setAutoUpdate] = useState(true);
   const { toast } = useToast();
 
-  // Handle ETA updates
-  const handleETAUpdate = (newEtas: Map<string, ETACalculation>) => {
+  const studentIdsKey = useMemo(() => studentIds.slice().sort().join("|"), [studentIds]);
+  const stableStudentIds = useMemo(() => [...studentIds], [studentIdsKey]);
+
+  const handleETAUpdate = useCallback((newEtas: Map<string, ETACalculation>) => {
     setEtas(newEtas);
     setLastUpdated(new Date());
     setIsLoading(false);
-  };
+  }, []);
 
-  // Manual refresh
   const refreshETA = async () => {
     setIsLoading(true);
     try {
-      const newEtas = await etaCalculationService.calculateETAForStudents(studentIds);
+      etaCalculationService.clearCache();
+      const newEtas = await etaCalculationService.calculateETAForStudents([...studentIds]);
       handleETAUpdate(newEtas);
     } catch (error) {
-      console.error('Error refreshing ETA:', error);
+      console.error("Error refreshing ETA:", error);
       toast({
         title: "ETA Update Failed",
         description: "Could not refresh arrival time estimates",
-        variant: "destructive"
+        variant: "destructive",
       });
       setIsLoading(false);
     }
   };
 
-  // Start/stop automatic updates
   useEffect(() => {
-    if (autoUpdate && studentIds.length > 0) {
-      etaCalculationService.startETAUpdates(studentIds, handleETAUpdate);
-      return () => etaCalculationService.stopETAUpdates();
-    }
-  }, [autoUpdate, studentIds]);
+    if (!autoUpdate || stableStudentIds.length === 0) return;
+    etaCalculationService.clearCache();
+    etaCalculationService.startETAUpdates(stableStudentIds, handleETAUpdate);
+    return () => etaCalculationService.stopETAUpdates();
+  }, [autoUpdate, studentIdsKey, handleETAUpdate, stableStudentIds]);
 
   // Get primary ETA (for single student or first student)
-  const primaryETA = studentIds.length > 0 ? etas.get(studentIds[0]) : null;
+  const primaryETA =
+    stableStudentIds.length > 0 ? etas.get(stableStudentIds[0]) : null;
 
   const getETAColor = (eta: ETACalculation) => {
     if (eta.estimatedArrivalTime === 'Arrived') return 'default';
@@ -94,7 +96,7 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {studentIds.length === 0 ? (
+        {stableStudentIds.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
             <Bus className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>No students assigned for ETA calculation</p>
@@ -174,11 +176,11 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
             )}
 
             {/* Multiple Students (if applicable) */}
-            {studentIds.length > 1 && (
+            {stableStudentIds.length > 1 && (
               <div className="pt-3 border-t">
                 <div className="text-sm font-medium mb-2">Other Children:</div>
                 <div className="space-y-2">
-                  {studentIds.slice(1).map(studentId => {
+                  {stableStudentIds.slice(1).map(studentId => {
                     const eta = etas.get(studentId);
                     if (!eta) return null;
                     

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useSimpleAuth } from '@/hooks/useSimpleAuth';
 import { format } from 'date-fns';
 
 interface FeedbackItem {
@@ -46,6 +47,7 @@ const AdminFeedback: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user: adminUser } = useSimpleAuth();
 
   useEffect(() => {
     fetchFeedbacks();
@@ -55,34 +57,63 @@ const AdminFeedback: React.FC = () => {
     try {
       setLoading(true);
       
-      let query = supabase
-        .from('parent_feedback')
-        .select(`
+      const base = () =>
+        supabase
+          .from("parent_feedback")
+          .select(
+            `
           *,
-          profiles:guardian_profile_id(username),
-          students:student_id(name),
-          drivers:driver_id(name)
-        `)
-        .order('created_at', { ascending: false });
+          profiles!parent_feedback_guardian_profile_id_fkey ( username ),
+          students!parent_feedback_student_id_fkey ( name ),
+          drivers!parent_feedback_driver_id_fkey ( name )
+        `,
+          )
+          .order("created_at", { ascending: false });
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      const fallback = () =>
+        supabase
+          .from("parent_feedback")
+          .select(
+            `
+          *,
+          profiles ( username ),
+          students ( name ),
+          drivers ( name )
+        `,
+          )
+          .order("created_at", { ascending: false });
+
+      let query = base();
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
+      }
+      if (typeFilter !== "all") {
+        query = query.eq("feedback_type", typeFilter);
       }
 
-      if (typeFilter !== 'all') {
-        query = query.eq('feedback_type', typeFilter);
-      }
+      let { data, error } = await query;
 
-      const { data, error } = await query;
+      if (error) {
+        let q2 = fallback();
+        if (statusFilter !== "all") q2 = q2.eq("status", statusFilter);
+        if (typeFilter !== "all") q2 = q2.eq("feedback_type", typeFilter);
+        const second = await q2;
+        data = second.data;
+        error = second.error;
+      }
 
       if (error) throw error;
 
       setFeedbacks((data as unknown as FeedbackItem[]) || []);
-    } catch (error: any) {
-      console.error('Error fetching feedbacks:', error);
+    } catch (error: unknown) {
+      console.error("Error fetching feedbacks:", error);
+      const msg =
+        error && typeof error === "object" && "message" in error
+          ? String((error as { message: string }).message)
+          : "Failed to fetch feedback data";
       toast({
         title: "Error",
-        description: "Failed to fetch feedback data",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -102,13 +133,14 @@ const AdminFeedback: React.FC = () => {
 
     try {
       const { error } = await supabase
-        .from('parent_feedback')
+        .from("parent_feedback")
         .update({
           admin_response: response,
-          status: 'resolved',
-          response_date: new Date().toISOString()
+          status: "resolved",
+          response_date: new Date().toISOString(),
+          ...(adminUser?.id ? { admin_responder_id: adminUser.id } : {}),
         })
-        .eq('id', feedbackId);
+        .eq("id", feedbackId);
 
       if (error) throw error;
 

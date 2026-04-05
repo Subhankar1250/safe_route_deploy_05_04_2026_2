@@ -25,6 +25,8 @@ interface DriverLocation {
   longitude: number;
   last_updated: string;
   is_active: boolean;
+  /** From live_locations.speed when present (km/h). */
+  speed_kmh?: number;
 }
 
 function sameBusNumber(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -65,6 +67,10 @@ export const useGuardianStudents = (profileId: string | null) => {
           longitude: liveData.longitude,
           last_updated: liveData.timestamp,
           is_active: liveData.is_active,
+          speed_kmh:
+            liveData.speed != null && Number.isFinite(Number(liveData.speed))
+              ? Number(liveData.speed)
+              : undefined,
         };
       } else {
         const { data: locationData, error: locationError } = await supabase.rpc(
@@ -101,7 +107,11 @@ export const useGuardianStudents = (profileId: string | null) => {
             Number(student.pickup_location_lng),
           );
 
-          const timeInMinutes = estimateTravelTime(distance, 25);
+          const roadKmh =
+            location.speed_kmh != null && location.speed_kmh >= 8 && location.speed_kmh <= 90
+              ? location.speed_kmh
+              : 28;
+          const timeInMinutes = estimateTravelTime(distance, roadKmh);
 
           if (distance < 0.1) {
             setEstimatedTime('Arrived');
