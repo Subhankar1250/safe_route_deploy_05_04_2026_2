@@ -33,11 +33,57 @@ const RouteDeviationMonitor: React.FC<RouteDeviationMonitorProps> = ({
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [deviationReason, setDeviationReason] = useState('');
   const [currentDeviationId, setCurrentDeviationId] = useState<string | null>(null);
+  const [routeReference, setRouteReference] = useState<{ lat: number; lng: number } | null>(null);
+  const [hasPickupCoords, setHasPickupCoords] = useState(false);
   const { toast } = useToast();
 
-  // Simulated route boundaries - in real implementation, this would use actual route data
-  const routeCenter = { lat: 12.9716, lng: 77.5946 }; // Bangalore center
+  // Route boundary baseline: centroid of driver pickup points (fallback: first live location).
   const maxDeviationDistance = 500; // meters
+
+  useEffect(() => {
+    if (!driverId) return;
+    let cancelled = false;
+
+    const loadRouteReference = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("students")
+          .select("pickup_location_lat, pickup_location_lng")
+          .eq("driver_id", driverId)
+          .not("pickup_location_lat", "is", null)
+          .not("pickup_location_lng", "is", null);
+        if (error || cancelled) return;
+
+        const pts = (data || [])
+          .map((r) => ({
+            lat: Number(r.pickup_location_lat),
+            lng: Number(r.pickup_location_lng),
+          }))
+          .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+        if (!pts.length) {
+          setHasPickupCoords(false);
+          return;
+        }
+        setHasPickupCoords(true);
+        const center = pts.reduce(
+          (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+          { lat: 0, lng: 0 },
+        );
+        setRouteReference({
+          lat: center.lat / pts.length,
+          lng: center.lng / pts.length,
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+
+    void loadRouteReference();
+    return () => {
+      cancelled = true;
+    };
+  }, [driverId]);
 
   // Monitor route adherence when tracking is active
   useEffect(() => {
@@ -50,12 +96,19 @@ const RouteDeviationMonitor: React.FC<RouteDeviationMonitorProps> = ({
         const currentLat = position.coords.latitude;
         const currentLng = position.coords.longitude;
         
-        // Calculate distance from route center (simplified for demo)
+        if (!routeReference) {
+          // Fallback baseline: first valid GPS point after trip starts.
+          setRouteReference({ lat: currentLat, lng: currentLng });
+          setCurrentDeviation(0);
+          return;
+        }
+
+        // Calculate distance from route reference center.
         const distance = calculateDistance(
           currentLat, 
           currentLng, 
-          routeCenter.lat, 
-          routeCenter.lng
+          routeReference.lat,
+          routeReference.lng
         );
 
         setCurrentDeviation(distance);
@@ -87,7 +140,7 @@ const RouteDeviationMonitor: React.FC<RouteDeviationMonitorProps> = ({
         navigator.geolocation.clearWatch(watchId);
       }
     };
-  }, [isActive, driverId, isOnRoute]);
+  }, [isActive, driverId, isOnRoute, routeReference]);
 
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371e3; // Earth's radius in meters
@@ -346,6 +399,9 @@ const RouteDeviationMonitor: React.FC<RouteDeviationMonitorProps> = ({
           <p>• Route monitoring tracks adherence to planned routes</p>
           <p>• Deviations beyond 500m are flagged for review</p>
           <p>• Provide reasons for justified deviations</p>
+          {!hasPickupCoords && (
+            <p>• Pickup coordinates are missing, so fallback baseline GPS is used.</p>
+          )}
         </div>
       </CardContent>
     </Card>

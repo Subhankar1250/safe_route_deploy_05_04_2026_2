@@ -26,10 +26,10 @@ export interface StudentActionNotificationData {
 
 export const sendStudentActionNotification = async (data: StudentActionNotificationData) => {
   try {
-    const actionText = data.action === 'pickup' ? 'picked up' : 'dropped off';
-    const actionPast = data.action === 'pickup' ? 'Picked Up' : 'Dropped Off';
+    const actionText = data.action === 'pickup' ? 'picked up' : 'dropped at home';
+    const actionPast = data.action === 'pickup' ? 'Picked Up' : 'Dropped Home';
     
-    const message = `🚌 *Student ${actionPast}*\n\nDear ${data.guardian_name}, your child ${data.student_name} has been ${actionText} by Bus #${data.bus_number} (Driver: ${data.driver_name}) at ${data.time}.\n\n${data.action === 'pickup' ? `📍 Pickup location: ${data.pickup_point}` : '✅ Drop-off completed.'}\n\n- Sishu Tirtha Safe Route`;
+    const message = `🚌 *Student ${actionPast}*\n\nDear ${data.guardian_name}, your child ${data.student_name} has been ${actionText} by Bus #${data.bus_number} (Driver: ${data.driver_name}) at ${data.time}.\n\n${data.action === 'pickup' ? `📍 Pickup location: ${data.pickup_point}` : '✅ Home drop completed.'}\n\n- Sishu Tirtha Safe Route`;
 
     const title = `Student ${actionPast}`;
     const shortBody = `${data.student_name} — Bus #${data.bus_number} · ${data.time}`;

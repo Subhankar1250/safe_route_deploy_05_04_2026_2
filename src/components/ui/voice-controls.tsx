@@ -6,11 +6,13 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Volume2, VolumeX, Settings } from 'lucide-react';
 import { useVoiceAnnouncements } from '@/hooks/useVoiceAnnouncements';
+import { useAppLanguage } from '@/contexts/AppLanguageContext';
 
 export function VoiceControlPanel() {
   const { getSettings, saveSettings, speak } = useVoiceAnnouncements();
   const [settings, setSettings] = useState(getSettings());
   const [isExpanded, setIsExpanded] = useState(false);
+  const { t } = useAppLanguage();
 
   const updateSetting = (key: string, value: any) => {
     const newSettings = { ...settings, [key]: value };
@@ -28,7 +30,7 @@ export function VoiceControlPanel() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             {settings.enabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
-            Voice Announcements
+            {t("voice.title")}
           </CardTitle>
           <Button
             variant="ghost"
@@ -43,7 +45,7 @@ export function VoiceControlPanel() {
       <CardContent className="space-y-4">
         {/* Quick Toggle */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Enable Voice Announcements</span>
+          <span className="text-sm font-medium">{t("voice.enable")}</span>
           <Switch
             checked={settings.enabled}
             onCheckedChange={(checked) => updateSetting('enabled', checked)}
@@ -55,7 +57,7 @@ export function VoiceControlPanel() {
           <div className="space-y-4 pt-2 border-t">
             {/* Voice Selection */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Voice Type</label>
+              <label className="text-sm font-medium">{t("voice.voiceType")}</label>
               <Select
                 value={settings.voice}
                 onValueChange={(value) => updateSetting('voice', value)}
@@ -73,7 +75,7 @@ export function VoiceControlPanel() {
             {/* Speed Control */}
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Speech Speed: {settings.speed.toFixed(1)}x
+                {t("voice.speed")}: {settings.speed.toFixed(1)}x
               </label>
               <Slider
                 value={[settings.speed]}
@@ -87,7 +89,7 @@ export function VoiceControlPanel() {
 
             {/* Language Selection */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Language</label>
+              <label className="text-sm font-medium">{t("voice.language")}</label>
               <Select
                 value={settings.language}
                 onValueChange={(value) => updateSetting('language', value)}
@@ -112,7 +114,7 @@ export function VoiceControlPanel() {
               disabled={!settings.enabled}
             >
               <Volume2 className="h-4 w-4 mr-2" />
-              Test Voice
+              {t("voice.test")}
             </Button>
           </div>
         )}

@@ -31,7 +31,6 @@ import { useDriverData } from '@/hooks/useDriverData';
 import GeofenceMonitor from './GeofenceMonitor';
 import EmergencyPanicButton from './EmergencyPanicButton';
 import SpeedMonitor from './SpeedMonitor';
-import RouteDeviationMonitor from './RouteDeviationMonitor';
 import { notifyDriverGuardians } from "@/services/guardianTripNotifications";
 import FloatingChatButton from '../chat/FloatingChatButton';
 import { HolidayNotification } from '@/components/ui/holiday-notification';
@@ -40,19 +39,10 @@ import { DriverQuickStatus } from '@/components/driver/DriverQuickStatus';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { isSecureBrowserContext, insecureContextHelpMessage } from "@/utils/browserFeatures";
 import { locationPermissionHelpText } from "@/lib/nativeAndroidApp";
+import { useAppLanguage } from "@/contexts/AppLanguageContext";
 
 /** Default map center (Hooghly area) when GPS is denied or unavailable */
 const DEFAULT_DRIVER_MAP_CENTER = { lat: 22.783014, lng: 87.773584 };
-
-const DRIVER_DASHBOARD_NAV: DashboardNavItem[] = [
-  { id: "section-dash-notices", label: "Notices & calendar", icon: CalendarDays },
-  { id: "section-dash-quick", label: "Quick status", icon: MessageSquare },
-  { id: "section-dash-summary", label: "Summary", icon: LayoutGrid },
-  { id: "section-dash-map", label: "Map", icon: Map },
-  { id: "section-dash-trips", label: "Trips & journey", icon: Navigation },
-  { id: "section-dash-safety", label: "Safety & alerts", icon: Shield },
-  { id: "section-dash-students", label: "Students", icon: Users },
-];
 
 function describeTrackingFailure(err: unknown): string {
   if (err && typeof err === "object" && "code" in err) {
@@ -93,14 +83,23 @@ const DriverDashboard: React.FC = () => {
   const [journeyType, setJourneyType] = useState<'none' | 'pickup' | 'drop'>('none');
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useAppLanguage();
   const { user, logout } = useSimpleAuth();
   const { driverData, students, loading } = useDriverData(user?.id || null);
 
   const driverNavItems = useMemo(() => {
-    let items = [...DRIVER_DASHBOARD_NAV];
+    let items: DashboardNavItem[] = [
+      { id: "section-dash-notices", label: t("driver.nav.notices"), icon: CalendarDays },
+      { id: "section-dash-quick", label: t("driver.nav.quick"), icon: MessageSquare },
+      { id: "section-dash-summary", label: t("driver.nav.summary"), icon: LayoutGrid },
+      { id: "section-dash-map", label: t("driver.nav.map"), icon: Map },
+      { id: "section-dash-trips", label: t("driver.nav.trips"), icon: Navigation },
+      { id: "section-dash-safety", label: t("driver.nav.safety"), icon: Shield },
+      { id: "section-dash-students", label: t("driver.nav.students"), icon: Users },
+    ];
     if (!user?.id) items = items.filter((i) => i.id !== "section-dash-quick");
     return items;
-  }, [user?.id]);
+  }, [user?.id, t]);
 
   const [httpsBanner, setHttpsBanner] = useState(false);
   useEffect(() => {
@@ -325,7 +324,7 @@ const DriverDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <MobileAppShell roleLabel="Driver" subtitle="Loading…" onLogout={handleLogout}>
+      <MobileAppShell roleLabel={t("role.driver")} subtitle="Loading…" onLogout={handleLogout}>
         <div className="flex flex-col items-center justify-center py-16">
           <div className="h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-4 text-sm text-muted-foreground">Loading driver data…</p>
@@ -336,7 +335,7 @@ const DriverDashboard: React.FC = () => {
 
   if (!driverData) {
     return (
-      <MobileAppShell roleLabel="Driver" subtitle="Setup required" onLogout={handleLogout}>
+      <MobileAppShell roleLabel={t("role.driver")} subtitle="Setup required" onLogout={handleLogout}>
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
           <p className="text-base font-medium text-destructive">Driver profile not found</p>
           <Button onClick={() => router.push("/login")} className="mt-4 w-full rounded-xl sm:w-auto">
@@ -350,7 +349,7 @@ const DriverDashboard: React.FC = () => {
   return (
     <>
       <MobileAppShell
-        roleLabel="Driver"
+        roleLabel={t("role.driver")}
         subtitle={driverData.bus_number ? `Bus ${driverData.bus_number}` : driverData.name}
         onLogout={handleLogout}
       >
@@ -540,8 +539,8 @@ const DriverDashboard: React.FC = () => {
                       if (driverData?.id) {
                         void notifyDriverGuardians({
                           driverId: driverData.id,
-                          title: "Drop-off run started",
-                          body: `Bus #${driverData.bus_number ?? "—"} is on the drop-off route.`,
+                          title: "Left school for home",
+                          body: `Bus #${driverData.bus_number ?? "—"} has left school and started the home drop route.`,
                           step: "drop_journey_started",
                           data: {
                             bus_number: driverData.bus_number ?? "",
@@ -568,8 +567,8 @@ const DriverDashboard: React.FC = () => {
                     if (prev === "pickup") {
                       void notifyDriverGuardians({
                         driverId: driverData.id,
-                        title: "Pickup run finished",
-                        body: `Bus #${driverData.bus_number ?? "—"} has ended the pickup leg of the route.`,
+                        title: "Reached school",
+                        body: `Bus #${driverData.bus_number ?? "—"} has reached school.`,
                         step: "pickup_journey_ended",
                         data: { bus_number: driverData.bus_number ?? "" },
                       });
@@ -611,12 +610,6 @@ const DriverDashboard: React.FC = () => {
         />
 
         <SpeedMonitor driverId={driverData?.id || ''} isActive={tripActive} />
-
-        <RouteDeviationMonitor 
-          driverId={driverData?.id || ''} 
-          routeId={driverData?.route?.id || undefined}
-          isActive={tripActive} 
-        />
 
         <GeofenceMonitor driverId={driverData?.id || ''} isActive={tripActive} />
         </section>

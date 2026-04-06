@@ -9,7 +9,7 @@ import ErrorAlert from "./ErrorAlert";
 import { ForgotPinDialog } from "./ForgotPinDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, QrCode, Smartphone, ShieldCheck } from "lucide-react";
+import { Loader2, QrCode, Smartphone } from "lucide-react";
 
 const QrScanner = dynamic(() => import("./QrScanner"), {
   ssr: false,
@@ -183,17 +183,6 @@ const DriverLoginTab: React.FC<DriverLoginTabProps> = ({
       <TabsContent value="qr">
         <CardContent className="flex flex-col items-center space-y-4 px-6 pb-6">
           <ErrorAlert error={error} />
-          <div className="flex w-full items-start gap-3 rounded-xl border border-primary/15 bg-primary/5 p-3 text-left text-sm text-muted-foreground">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="font-medium text-foreground">Dynamic driver QR</p>
-              <p className="mt-1">
-                Scan the QR your school issued when you were added as a driver. It signs you in
-                securely without typing your PIN. Your school can also share a quick link that opens
-                this app and signs you in automatically.
-              </p>
-            </div>
-          </div>
           <QrScanner
             onScan={handleQRScan}
             onError={(e) =>

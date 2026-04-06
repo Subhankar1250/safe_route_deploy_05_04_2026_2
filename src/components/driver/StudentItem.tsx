@@ -6,7 +6,8 @@ import { Student } from './types';
 import { PhotoCapture, PhotoMetadata } from './PhotoCapture';
 import { useVoiceAnnouncements } from '@/hooks/useVoiceAnnouncements';
 import { useToast } from '@/components/ui/use-toast';
-import { Camera, Volume2 } from 'lucide-react';
+import { Camera } from 'lucide-react';
+import { useAppLanguage } from '@/contexts/AppLanguageContext';
 interface StudentItemProps {
   student: Student;
   isActive: boolean;
@@ -18,14 +19,15 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const { announceStudentPickup, announceStudentDropoff } = useVoiceAnnouncements();
   const { toast } = useToast();
+  const { t } = useAppLanguage();
 
   const getStatusText = (student: Student) => {
     if (student.isOnBoard) {
-      return `Boarded at ${student.boardedAt}`;
+      return `${t("driver.boardedAt")} ${student.boardedAt}`;
     } else if (student.boardedAt && student.leftAt) {
-      return `Boarded at ${student.boardedAt}, left at ${student.leftAt}`;
+      return `${t("driver.boardedAt")} ${student.boardedAt}, ${t("driver.leftAt")} ${student.leftAt}`;
     }
-    return "Not boarded";
+    return t("driver.notBoarded");
   };
 
   const handleCheckInOut = async () => {
@@ -68,12 +70,12 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
             <label htmlFor={`student-${student.id}`} className="font-medium cursor-pointer text-foreground">
               {student.name}
             </label>
-            <p className="text-sm text-muted-foreground">Grade: {student.grade}</p>
+            <p className="text-sm text-muted-foreground">{t("driver.grade")}: {student.grade}</p>
             {student.isAbsentToday && (
-              <p className="text-xs font-medium text-amber-700">Absent today</p>
+              <p className="text-xs font-medium text-amber-700">{t("driver.absentToday")}</p>
             )}
             {student.pickupPoint && (
-              <p className="text-xs text-muted-foreground">Pickup: {student.pickupPoint}</p>
+              <p className="text-xs text-muted-foreground">{t("driver.pickupPoint")}: {student.pickupPoint}</p>
             )}
           </div>
         </div>
@@ -87,7 +89,7 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
               onClick={() => setShowPhotoCapture(!showPhotoCapture)}
             >
               <Camera className="w-4 h-4 mr-1" />
-              Photo
+              {t("driver.photo")}
             </Button>
           )}
           
@@ -103,8 +105,8 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
               onClick={handleCheckInOut}
             >
               {journeyType === 'pickup' 
-                ? (student.isOnBoard ? 'Picked Up ✓' : 'Pick Up') 
-                : (student.isOnBoard ? 'On Bus' : 'Drop')
+                ? (student.isOnBoard ? t("driver.pickedUp") : t("driver.pickUp")) 
+                : (student.isOnBoard ? t("driver.onBus") : t("driver.drop"))
               }
             </Button>
           )}
@@ -116,7 +118,7 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
               disabled={!isActive || !!student.isAbsentToday}
               onClick={handleCheckInOut}
             >
-              {student.isOnBoard ? 'Check Out' : 'Check In'}
+              {student.isOnBoard ? t("driver.checkOut") : t("driver.checkIn")}
             </Button>
           )}
         </div>

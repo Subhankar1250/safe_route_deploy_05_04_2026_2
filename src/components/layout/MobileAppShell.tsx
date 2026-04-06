@@ -6,6 +6,7 @@ import { LogOut } from "lucide-react";
 import { SimpleThemeToggle } from "@/components/ui/theme-toggle";
 import { cn } from "@/lib/utils";
 import { DashboardDateTime } from "@/components/layout/DashboardDateTime";
+import { useAppLanguage } from "@/contexts/AppLanguageContext";
 
 import { BRAND_LOGO_SRC } from "@/lib/brandLogo";
 
@@ -32,14 +33,15 @@ export function MobileAppShell({
   children,
   className,
 }: MobileAppShellProps) {
+  const { lang, setLang, t } = useAppLanguage();
   return (
     <div
       className={cn(
-        "min-h-dvh overflow-x-hidden bg-gradient-to-b from-slate-100 via-background to-muted/40 dark:from-slate-950 dark:via-background dark:to-slate-900/80",
+        "h-dvh overflow-x-hidden bg-gradient-to-b from-slate-100 via-background to-muted/40 dark:from-slate-950 dark:via-background dark:to-slate-900/80",
         className,
       )}
     >
-      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col overflow-x-hidden shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
+      <div className="mx-auto flex h-dvh w-full max-w-lg flex-col overflow-hidden shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
         <header
           className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-md supports-[backdrop-filter]:bg-background/75"
           style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
@@ -66,6 +68,14 @@ export function MobileAppShell({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-full px-2 text-xs"
+                onClick={() => setLang(lang === "en" ? "bn" : "en")}
+              >
+                {lang === "en" ? t("lang.bengali") : t("lang.english")}
+              </Button>
               <div className="rounded-full border border-border/60 bg-muted/40 p-0.5">
                 <SimpleThemeToggle />
               </div>
@@ -87,7 +97,7 @@ export function MobileAppShell({
         </header>
 
         <main
-          className="flex-1 space-y-4 px-3 py-4 pb-[max(5.5rem,env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-4"
+          className="flex-1 overflow-y-auto overscroll-y-contain space-y-4 px-3 py-4 pb-[max(5.5rem,env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-4"
           style={{
             paddingBottom: "max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))",
           }}

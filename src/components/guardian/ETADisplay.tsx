@@ -6,14 +6,24 @@ import { Clock, MapPin, Bus, RefreshCw, Navigation } from "lucide-react";
 import { etaCalculationService, ETACalculation } from '@/services/etaCalculationService';
 import { useToast } from '@/hooks/use-toast';
 import { calculateDistance, calculateEtaFromDistance } from '@/utils/locationUtils';
+import { useAppLanguage } from "@/contexts/AppLanguageContext";
 
 interface ETADisplayProps {
   studentIds: string[];
   studentName?: string;
   busNumber?: string;
-  driverLocation?: { latitude: number; longitude: number; speed_kmh?: number | undefined } | null;
+  driverLocation?: {
+    latitude: number;
+    longitude: number;
+    speed_kmh?: number | undefined;
+    is_active?: boolean;
+    last_updated?: string;
+  } | null;
   guardianLocation?: { latitude: number; longitude: number } | null;
 }
+
+const MAX_DRIVER_LOCATION_AGE_MS = 2 * 60 * 1000;
+const MAX_REASONABLE_GUARDIAN_DISTANCE_KM = 100;
 
 const ETADisplay: React.FC<ETADisplayProps> = ({
   studentIds,
@@ -27,6 +37,7 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const { toast } = useToast();
+  const { t } = useAppLanguage();
 
   const studentIdsKey = useMemo(() => studentIds.slice().sort().join("|"), [studentIds]);
   const stableStudentIds = useMemo(() => [...studentIds], [studentIdsKey]);
@@ -67,12 +78,19 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
 
   const liveGuardianEta = useMemo(() => {
     if (!driverLocation || !guardianLocation) return null;
+    if (driverLocation.is_active === false) return null;
+    if (driverLocation.last_updated) {
+      const tsMs = Date.parse(driverLocation.last_updated);
+      const fresh = Number.isFinite(tsMs) && Date.now() - tsMs <= MAX_DRIVER_LOCATION_AGE_MS;
+      if (!fresh) return null;
+    }
     const distance = calculateDistance(
       driverLocation.latitude,
       driverLocation.longitude,
       guardianLocation.latitude,
       guardianLocation.longitude,
     );
+    if (!Number.isFinite(distance) || distance > MAX_REASONABLE_GUARDIAN_DISTANCE_KM) return null;
     const eta = calculateEtaFromDistance(distance, driverLocation.speed_kmh ?? 28);
     return {
       estimatedArrivalTime: eta.label,
@@ -80,6 +98,13 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
       durationMinutes: eta.label === "Arrived" ? 0 : eta.durationMinutes,
     };
   }, [driverLocation, guardianLocation]);
+
+  const isDriverLocationStale = useMemo(() => {
+    if (!driverLocation?.last_updated) return false;
+    const tsMs = Date.parse(driverLocation.last_updated);
+    if (!Number.isFinite(tsMs)) return false;
+    return Date.now() - tsMs > MAX_DRIVER_LOCATION_AGE_MS;
+  }, [driverLocation?.last_updated]);
 
   const getETAColor = (eta: ETACalculation) => {
     if (eta.estimatedArrivalTime === 'Arrived') return 'default';
@@ -243,6 +268,16 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
                 <p className="text-sm text-muted-foreground mt-1">
                   Bus location or pickup coordinates may be missing
                 </p>
+                {isDriverLocationStale && (
+                  <div className="mt-3 inline-flex flex-col items-center gap-1">
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
+                      {t("guardian.etaStaleBadge")}
+                    </Badge>
+                    <p className="text-xs text-amber-700">
+                      {t("guardian.etaStaleHint")}
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </div>

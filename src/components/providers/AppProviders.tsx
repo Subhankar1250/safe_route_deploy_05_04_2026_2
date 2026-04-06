@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { StaticStylesHealth } from "@/components/providers/StaticStylesHealth";
 import { SessionExpiryGuard } from "@/components/providers/SessionExpiryGuard";
 import { NativeAndroidAppGuard } from "@/components/providers/NativeAndroidAppGuard";
+import { AppLanguageProvider } from "@/contexts/AppLanguageContext";
 
 const ClientBoot = dynamic(
   () => import("./ClientBoot").then((m) => ({ default: m.ClientBoot })),
@@ -47,6 +48,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         <SessionExpiryGuard />
         <GuardianForegroundMessages />
         <NativeAndroidAppGuard />
+        <AppLanguageProvider>
         <QueryClientProvider client={client}>
           <Suspense
             fallback={
@@ -81,6 +83,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           </Suspense>
           <Toaster />
         </QueryClientProvider>
+        </AppLanguageProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

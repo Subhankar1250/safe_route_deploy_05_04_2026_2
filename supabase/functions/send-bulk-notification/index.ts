@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
+import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +134,23 @@ serve(async (req) => {
     const fcm = await sendFcmToTokensIfConfigured(tokens, notification);
     const failedCount = fcm?.errors.length ?? 0;
     const sentCount = fcm ? Math.max(0, tokens.length - failedCount) : 0;
+
+    const step = typeof data?.type === "string" ? String(data.type) : "bulk_announcement";
+    const guardianProfileIds =
+      userTypes && userTypes.length > 0
+        ? userTypes.includes("guardian")
+          ? profileIds
+          : []
+        : profileIds;
+    if (guardianProfileIds.length > 0) {
+      await storeGuardianNotifications(supabaseClient, {
+        guardianIds: guardianProfileIds,
+        title,
+        body,
+        step,
+        payload: data ?? {},
+      });
+    }
 
     const { error: logError } = await supabaseClient.from("notification_logs").insert({
       title: `BULK: ${title}`,

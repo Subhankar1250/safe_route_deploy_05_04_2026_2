@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
+import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
+import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +49,7 @@ serve(async (req) => {
 
     if (se) throw se;
 
-    const guardianIds = [
+    const guardianIdsRaw = [
       ...new Set(
         (students || [])
           .map((s) => s.guardian_profile_id as string)
@@ -55,9 +57,11 @@ serve(async (req) => {
       ),
     ];
 
+    const guardianIds = await filterGuardianIdsByPreference(supabase, guardianIdsRaw, step);
+
     if (guardianIds.length === 0) {
       return new Response(
-        JSON.stringify({ message: "No guardians for this driver", sent: 0 }),
+        JSON.stringify({ message: "No guardians for this driver/step preference", sent: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -112,6 +116,19 @@ serve(async (req) => {
     };
 
     const fcm = await sendFcmToTokensIfConfigured(tokens, notification);
+
+    await storeGuardianNotifications(supabase, {
+      guardianIds,
+      title,
+      body,
+      step: step ?? "trip_update",
+      driverId: driver_id,
+      studentId: typeof data?.student_id === "string" ? data.student_id : undefined,
+      payload: {
+        ...(data ?? {}),
+        url: "/guardian/dashboard",
+      },
+    });
 
     await supabase.from("notification_logs").insert({
       user_type: "guardian",

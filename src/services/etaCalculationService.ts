@@ -25,6 +25,7 @@ interface PickupLocation {
 
 /** Typical school-bus average when GPS speed is missing or unreliable (km/h). */
 const DEFAULT_ROAD_SPEED_KMH = 28;
+const MAX_DRIVER_LOCATION_AGE_MS = 2 * 60 * 1000;
 
 class ETACalculationService {
   private static instance: ETACalculationService;
@@ -79,6 +80,9 @@ class ETACalculationService {
         const lat = row.latitude != null ? Number(row.latitude) : NaN;
         const lng = row.longitude != null ? Number(row.longitude) : NaN;
         if (row.is_active === true && Number.isFinite(lat) && Number.isFinite(lng)) {
+          const tsMs = Date.parse(String(row.last_updated ?? ""));
+          const isFresh = Number.isFinite(tsMs) && Date.now() - tsMs <= MAX_DRIVER_LOCATION_AGE_MS;
+          if (!isFresh) return null;
           return {
             latitude: lat,
             longitude: lng,
@@ -104,6 +108,9 @@ class ETACalculationService {
       const lat = Number(live.latitude);
       const lng = Number(live.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const liveTsMs = Date.parse(String(live.timestamp ?? ""));
+      const liveFresh = Number.isFinite(liveTsMs) && Date.now() - liveTsMs <= MAX_DRIVER_LOCATION_AGE_MS;
+      if (!liveFresh) return null;
 
       return {
         latitude: lat,

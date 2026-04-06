@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "670285626876",
+    "project_id": "saferoute-97776",
+    "storage_bucket": "saferoute-97776.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:670285626876:android:fac09716882b011a938679",
+        "android_client_info": {
+          "package_name": "in.sishutirtha.saferoute"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB17X7oEvkSvkm-Mi4-2R5EZV1lIZJJQT0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

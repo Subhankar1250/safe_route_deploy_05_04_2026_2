@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfile, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
+import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
+import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
 
 type Supabase = ReturnType<typeof createClient>;
 
@@ -90,6 +92,32 @@ async function collectProfileIdsForUserType(
   return (profiles || []).map((p) => p.id as string).filter(Boolean);
 }
 
+async function collectTokensForProfileIds(
+  supabase: Supabase,
+  profileIds: string[],
+): Promise<string[]> {
+  if (profileIds.length === 0) return [];
+  const out = new Set<string>();
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, fcm_token")
+    .in("id", profileIds);
+  for (const p of profiles || []) {
+    if (p?.fcm_token) out.add(p.fcm_token);
+  }
+
+  const { data: gpts } = await supabase
+    .from("guardian_push_tokens")
+    .select("token")
+    .in("profile_id", profileIds);
+  for (const g of gpts || []) {
+    if (g?.token) out.add(g.token);
+  }
+
+  return [...out];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -132,6 +160,22 @@ serve(async (req) => {
       );
     }
 
+    const step = typeof notification?.data?.step === "string" ? notification.data.step : undefined;
+    if (userId && step) {
+      const filteredIds = await filterGuardianIdsByPreference(supabaseClient, [userId], step);
+      if (filteredIds.length === 0) {
+        tokens = [];
+        broadcastProfileIds = [];
+      }
+    } else if (userType === "guardian" && step) {
+      broadcastProfileIds = await filterGuardianIdsByPreference(
+        supabaseClient,
+        broadcastProfileIds,
+        step,
+      );
+      tokens = await collectTokensForProfileIds(supabaseClient, broadcastProfileIds);
+    }
+
     const n = notification;
     const rtPayload: AppBroadcastPayload = {
       title: n.title,
@@ -152,6 +196,21 @@ serve(async (req) => {
     }
 
     const fcm = await sendFcmToTokensIfConfigured(tokens, notification);
+
+    if (broadcastProfileIds.length > 0) {
+      await storeGuardianNotifications(supabaseClient, {
+        guardianIds: broadcastProfileIds,
+        title: notification.title,
+        body: notification.body,
+        step: step ?? "direct_notification",
+        driverId: typeof notification.data?.driver_id === "string" ? notification.data.driver_id : undefined,
+        studentId: typeof notification.data?.student_id === "string" ? notification.data.student_id : undefined,
+        payload: {
+          ...(notification.data ?? {}),
+          url: typeof notification.data?.url === "string" ? notification.data.url : "/guardian/dashboard",
+        },
+      });
+    }
 
     if (!fcm && tokens.length === 0 && broadcastProfileIds.length === 0) {
       return new Response(

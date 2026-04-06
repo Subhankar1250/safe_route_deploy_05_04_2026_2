@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -43,23 +43,7 @@ import { locationPermissionHelpText } from "@/lib/nativeAndroidApp";
 import { useProximityAlarm } from "@/hooks/useProximityAlarm";
 import { markStudentAbsentToday } from "@/services/guardianAttendanceService";
 import { NotificationCenter } from "@/components/guardian/NotificationCenter";
-
-const GUARDIAN_NAV_FULL: DashboardNavItem[] = [
-  { id: "section-g-notices", label: "Notices", icon: CalendarDays },
-  { id: "section-g-child", label: "Child", icon: User },
-  { id: "section-g-driver", label: "Driver & bus", icon: Bus },
-  { id: "section-g-live", label: "Live status", icon: Activity },
-  { id: "section-g-eta", label: "ETA", icon: Clock },
-  { id: "section-g-map", label: "Map", icon: Map },
-  { id: "section-g-history", label: "Pickup / drop", icon: History },
-  { id: "section-g-feedback", label: "Feedback", icon: MessageCircle },
-  { id: "section-g-voice", label: "Voice", icon: Mic },
-  { id: "section-g-location", label: "My location", icon: MapPin },
-];
-
-const GUARDIAN_NAV_MINIMAL: DashboardNavItem[] = [
-  { id: "section-g-notices", label: "Notices", icon: CalendarDays },
-];
+import { useAppLanguage } from "@/contexts/AppLanguageContext";
 
 const GuardianDashboard: React.FC = () => {
   const [guardianLocation, setGuardianLocation] = useState<{latitude: number, longitude: number} | null>(null);
@@ -68,9 +52,11 @@ const GuardianDashboard: React.FC = () => {
   const [absentToday, setAbsentToday] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useAppLanguage();
   const { user, logout } = useSimpleAuth();
   const { students, driverLocation, loading, estimatedTime } = useGuardianStudents(correctProfileId || user?.id || null);
   const { announceBusArrival } = useVoiceAnnouncements();
+  const lastAnnouncedEtaRef = useRef<string | null>(null);
 
   const student = students[0];
 
@@ -85,9 +71,8 @@ const GuardianDashboard: React.FC = () => {
     cooldownMs: 5 * 60 * 1000,
     onTriggered: () => {
       toast({
-        title: "সতর্কতা",
-        description:
-          "ড্রাইভার ৫০০ মিটারের মধ্যে চলে এসেছে, আপনি বাচ্চাকে নিয়ে প্রস্তুত থাকুন।",
+        title: t("guardian.proximityTitle"),
+        description: t("guardian.proximityMsg"),
       });
     },
   });
@@ -99,29 +84,63 @@ const GuardianDashboard: React.FC = () => {
     const next = !absentToday;
     const res = await markStudentAbsentToday({
       guardianProfileId,
+      guardianMobile: user?.mobile_number,
       studentId: student.student_id,
       absent: next,
     });
     if (!res.ok) {
       toast({
-        title: "Could not update absent",
-        description: res.message ?? "Try again",
+        title: t("guardian.absentFailTitle"),
+        description: res.message ?? t("guardian.absentTryAgain"),
         variant: "destructive",
       });
       return;
     }
     setAbsentToday(next);
     toast({
-      title: next ? "Marked absent" : "Marked present",
+      title: next ? t("guardian.markedAbsent") : t("guardian.markedPresent"),
       description: next
-        ? "Driver will see this student as absent today."
-        : "Driver will see this student as present today.",
+        ? t("guardian.driverWillSeeAbsent")
+        : t("guardian.driverWillSeePresent"),
     });
   };
 
+  // Guardian voice announcement: announce meaningful ETA changes only once per value.
+  useEffect(() => {
+    if (!driverLocation?.is_active) return;
+    if (!estimatedTime) return;
+    if (!student?.bus_number) return;
+    if (lastAnnouncedEtaRef.current === estimatedTime) return;
+
+    const shouldAnnounce =
+      estimatedTime === "Arrived" ||
+      estimatedTime === "Less than 1 min" ||
+      /(^[0-9]+\s*mins?$)|(^[0-9]+\s*min$)|(^[0-9]+\s*hr)/i.test(estimatedTime);
+    if (!shouldAnnounce) return;
+
+    lastAnnouncedEtaRef.current = estimatedTime;
+    void announceBusArrival(student.bus_number, estimatedTime);
+  }, [announceBusArrival, driverLocation?.is_active, estimatedTime, student?.bus_number]);
+
   const guardianNavItems = useMemo(() => {
-    if (!student) return GUARDIAN_NAV_MINIMAL;
-    let items = [...GUARDIAN_NAV_FULL];
+    const full: DashboardNavItem[] = [
+      { id: "section-g-notices", label: t("guardian.nav.notices"), icon: CalendarDays },
+      { id: "section-g-child", label: t("guardian.nav.child"), icon: User },
+      { id: "section-g-driver", label: t("guardian.nav.driver"), icon: Bus },
+      { id: "section-g-live", label: t("guardian.nav.live"), icon: Activity },
+      { id: "section-g-eta", label: t("guardian.nav.eta"), icon: Clock },
+      { id: "section-g-map", label: t("guardian.nav.map"), icon: Map },
+      { id: "section-g-history", label: t("guardian.nav.history"), icon: History },
+      { id: "section-g-feedback", label: t("guardian.nav.feedback"), icon: MessageCircle },
+      { id: "section-g-voice", label: t("guardian.nav.voice"), icon: Mic },
+      { id: "section-g-location", label: t("guardian.nav.location"), icon: MapPin },
+    ];
+    const minimal: DashboardNavItem[] = [
+      { id: "section-g-notices", label: t("guardian.nav.notices"), icon: CalendarDays },
+    ];
+
+    if (!student) return minimal;
+    let items = [...full];
     if (!student.driver_name) {
       items = items.filter((i) => i.id !== "section-g-driver");
     }
@@ -132,7 +151,7 @@ const GuardianDashboard: React.FC = () => {
       items = items.filter((i) => i.id !== "section-g-location");
     }
     return items;
-  }, [student, student?.driver_name, driverLocation, guardianLocation]);
+  }, [student, student?.driver_name, driverLocation, guardianLocation, t]);
 
   // Fix profile ID issue on mount
   useEffect(() => {
@@ -296,8 +315,8 @@ const GuardianDashboard: React.FC = () => {
   return (
     <>
       <MobileAppShell
-        roleLabel="Guardian"
-        subtitle={student ? student.student_name : "Parent app"}
+        roleLabel={t("role.guardian")}
+        subtitle={student ? student.student_name : t("role.guardianSubtitle")}
         onLogout={handleLogout}
       >
         <MobileDashboardFeatureNav items={guardianNavItems} title="Jump to" />
@@ -343,10 +362,10 @@ const GuardianDashboard: React.FC = () => {
                     variant={absentToday ? "secondary" : "destructive"}
                     onClick={() => void toggleAbsent()}
                   >
-                    {absentToday ? "Undo absent (Today)" : "Mark Absent (Today)"}
+                    {absentToday ? t("guardian.undoAbsent") : t("guardian.markAbsent")}
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    If marked absent, the driver list will gray out this stop for today.
+                    {t("guardian.absentHint")}
                   </p>
                 </div>
               </CardContent>
@@ -511,6 +530,8 @@ const GuardianDashboard: React.FC = () => {
                 latitude: driverLocation.latitude,
                 longitude: driverLocation.longitude,
                 speed_kmh: driverLocation.speed_kmh,
+                is_active: driverLocation.is_active,
+                last_updated: driverLocation.last_updated,
               } : null}
               guardianLocation={guardianLocation}
             />

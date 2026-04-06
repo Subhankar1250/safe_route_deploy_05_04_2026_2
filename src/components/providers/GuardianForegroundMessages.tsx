@@ -9,6 +9,11 @@ import {
   type GuardianBroadcastPayload,
 } from "@/lib/guardianRealtimeNotify";
 import { appendGuardianNotificationHistory } from "@/services/guardianNotificationCenter";
+import {
+  fetchGuardianNotificationPrefsFromServer,
+  mapStepToNotificationType,
+  readGuardianNotificationPrefs,
+} from "@/services/guardianNotificationPreferences";
 
 /** Must match `appNotifyTopic` in Supabase Edge `realtimeBroadcast.ts`. */
 export const GUARDIAN_APP_NOTIFY_TOPIC_PREFIX = "app-notify-";
@@ -39,6 +44,7 @@ export function GuardianForegroundMessages() {
 
   useEffect(() => {
     if (!guardianId) return;
+    void fetchGuardianNotificationPrefsFromServer(guardianId);
 
     const topic = `${GUARDIAN_APP_NOTIFY_TOPIC_PREFIX}${guardianId}`;
 
@@ -53,6 +59,11 @@ export function GuardianForegroundMessages() {
           const inner = payload?.payload ?? payload;
           const parsed = parseBroadcastPayload(inner);
           if (!parsed) return;
+          const stepType = mapStepToNotificationType(parsed.step);
+          if (stepType) {
+            const prefs = readGuardianNotificationPrefs(guardianId);
+            if (!prefs[stepType]) return;
+          }
 
           toastRef.current({
             title: parsed.title,

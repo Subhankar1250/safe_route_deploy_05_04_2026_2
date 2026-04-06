@@ -8,6 +8,7 @@ const corsHeaders = {
 
 type Body = {
   guardian_profile_id: string;
+  guardian_mobile?: string;
   student_id: string;
   /** YYYY-MM-DD (IST) */
   date: string;
@@ -24,7 +25,7 @@ serve(async (req) => {
     );
 
     const body = (await req.json()) as Body;
-    const { guardian_profile_id, student_id, date, attendance_status } = body;
+    const { guardian_profile_id, guardian_mobile, student_id, date, attendance_status } = body;
 
     if (!guardian_profile_id || !student_id || !date || !attendance_status) {
       return new Response(JSON.stringify({ error: "guardian_profile_id, student_id, date, attendance_status required" }), {
@@ -36,13 +37,40 @@ serve(async (req) => {
     // Verify guardian owns this student
     const { data: student, error: se } = await supabase
       .from("students")
-      .select("id, guardian_profile_id, driver_id")
+      .select("id, guardian_profile_id, guardian_mobile, driver_id")
       .eq("id", student_id)
       .maybeSingle();
 
     if (se) throw se;
-    if (!student || student.guardian_profile_id !== guardian_profile_id) {
+    if (!student) {
       return new Response(JSON.stringify({ error: "Not allowed" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let allowed = student.guardian_profile_id === guardian_profile_id;
+    if (!allowed && guardian_mobile && student.guardian_mobile) {
+      const reqMobile = String(guardian_mobile).replace(/\D/g, "");
+      const sMobile = String(student.guardian_mobile ?? "").replace(/\D/g, "");
+      if (reqMobile && sMobile && (reqMobile === sMobile || reqMobile.endsWith(sMobile) || sMobile.endsWith(reqMobile))) {
+        allowed = true;
+      }
+    }
+    if (!allowed && student.guardian_mobile) {
+      const { data: profileById } = await supabase
+        .from("profiles")
+        .select("mobile_number")
+        .eq("id", guardian_profile_id)
+        .maybeSingle();
+      const pMobile = String(profileById?.mobile_number ?? "").replace(/\D/g, "");
+      const sMobile = String(student.guardian_mobile ?? "").replace(/\D/g, "");
+      if (pMobile && sMobile && (pMobile === sMobile || pMobile.endsWith(sMobile) || sMobile.endsWith(pMobile))) {
+        allowed = true;
+      }
+    }
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: "Not allowed for this student" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

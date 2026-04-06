@@ -6,6 +6,7 @@
 -- Holiday schedule: let guardians/drivers read without JWT
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS "All authenticated users can view holidays" ON public.holiday_schedule;
+DROP POLICY IF EXISTS "Public can view holiday schedule" ON public.holiday_schedule;
 
 CREATE POLICY "Public can view holiday schedule"
   ON public.holiday_schedule

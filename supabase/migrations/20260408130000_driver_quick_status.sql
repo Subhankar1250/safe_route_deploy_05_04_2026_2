@@ -1,13 +1,13 @@
 -- Short status lines from drivers to admins (works with profile-based login via RPC).
 
-CREATE TABLE public.driver_quick_status (
+CREATE TABLE IF NOT EXISTS public.driver_quick_status (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   driver_id uuid NOT NULL REFERENCES public.drivers(id) ON DELETE CASCADE,
   message text NOT NULL CHECK (char_length(message) >= 1 AND char_length(message) <= 280),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_driver_quick_status_created_at ON public.driver_quick_status (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_driver_quick_status_created_at ON public.driver_quick_status (created_at DESC);
 
 ALTER TABLE public.driver_quick_status ENABLE ROW LEVEL SECURITY;
 

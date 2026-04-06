@@ -29,6 +29,8 @@ interface DriverLocation {
   speed_kmh?: number;
 }
 
+const MAX_DRIVER_LOCATION_AGE_MS = 2 * 60 * 1000;
+
 function sameBusNumber(a: string | null | undefined, b: string | null | undefined): boolean {
   const na = (a ?? '').trim();
   const nb = (b ?? '').trim();
@@ -59,6 +61,8 @@ export const useGuardianStudents = (profileId: string | null) => {
 
       if (!liveError && liveLocationData && liveLocationData.length > 0) {
         const liveData = liveLocationData[0];
+        const tsMs = Date.parse(String(liveData.timestamp ?? ""));
+        const isFresh = Number.isFinite(tsMs) && Date.now() - tsMs <= MAX_DRIVER_LOCATION_AGE_MS;
         location = {
           driver_id: student.driver_id,
           driver_name: student.driver_name,
@@ -66,7 +70,8 @@ export const useGuardianStudents = (profileId: string | null) => {
           latitude: liveData.latitude,
           longitude: liveData.longitude,
           last_updated: liveData.timestamp,
-          is_active: liveData.is_active,
+          // Treat stale pings as inactive to avoid fake long-distance ETA.
+          is_active: Boolean(liveData.is_active) && isFresh,
           speed_kmh:
             liveData.speed != null && Number.isFinite(Number(liveData.speed))
               ? Number(liveData.speed)
@@ -85,7 +90,12 @@ export const useGuardianStudents = (profileId: string | null) => {
             row.longitude != null &&
             row.is_active === true
           ) {
-            location = row as DriverLocation;
+            const rowTs = Date.parse(String(row.last_updated ?? ""));
+            const rowFresh = Number.isFinite(rowTs) && Date.now() - rowTs <= MAX_DRIVER_LOCATION_AGE_MS;
+            location = {
+              ...(row as DriverLocation),
+              is_active: Boolean(row.is_active) && rowFresh,
+            };
           }
         }
       }

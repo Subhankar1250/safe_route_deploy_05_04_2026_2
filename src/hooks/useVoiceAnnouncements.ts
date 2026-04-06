@@ -7,21 +7,36 @@ interface VoiceSettings {
   language: string;
 }
 
-function speakBrowser(text: string, opts?: { rate?: number; lang?: string }) {
+function pickVoice(lang: string, pref: "male" | "female"): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  const byLang = voices.filter((v) => v.lang?.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2)));
+  const pool = byLang.length ? byLang : voices;
+  const genderHint = pref === "female" ? /female|zira|susan|siri/i : /male|david|mark|alex/i;
+  return pool.find((v) => genderHint.test(v.name)) || pool[0] || null;
+}
+
+function speakBrowser(text: string, opts?: { rate?: number; lang?: string; voice?: "male" | "female" }) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
+  if (!text?.trim()) return;
+  window.speechSynthesis.cancel(); // keep only latest announcement
   const u = new SpeechSynthesisUtterance(text);
   u.lang = opts?.lang || "en-IN";
   u.rate = opts?.rate ?? 1;
+  const selected = pickVoice(u.lang, opts?.voice ?? "female");
+  if (selected) u.voice = selected;
   window.speechSynthesis.speak(u);
 }
 
 export function useVoiceAnnouncements() {
+  const appLang =
+    typeof window !== "undefined" && localStorage.getItem("app_lang") === "bn" ? "bn-IN" : "en-IN";
   const defaultSettings: VoiceSettings = {
     enabled: true,
     voice: "female",
     speed: 1.0,
-    language: "en-IN",
+    language: appLang,
   };
 
   const getSettings = useCallback((): VoiceSettings => {
@@ -52,6 +67,7 @@ export function useVoiceAnnouncements() {
       speakBrowser(text, {
         rate: options?.speed ?? settings.speed,
         lang: options?.language ?? settings.language,
+        voice: options?.voice ?? settings.voice,
       });
     },
     [getSettings],
@@ -61,7 +77,11 @@ export function useVoiceAnnouncements() {
     async (studentName: string, busNumber: string) => {
       const settings = getSettings();
       if (!settings.enabled) return;
-      speakBrowser(`Pickup: ${studentName} for bus ${busNumber}.`);
+      speakBrowser(`Pickup: ${studentName} for bus ${busNumber}.`, {
+        lang: settings.language,
+        rate: settings.speed,
+        voice: settings.voice,
+      });
     },
     [getSettings],
   );
@@ -70,7 +90,11 @@ export function useVoiceAnnouncements() {
     async (studentName: string) => {
       const settings = getSettings();
       if (!settings.enabled) return;
-      speakBrowser(`Drop-off completed for ${studentName}.`);
+      speakBrowser(`Drop-off completed for ${studentName}.`, {
+        lang: settings.language,
+        rate: settings.speed,
+        voice: settings.voice,
+      });
     },
     [getSettings],
   );
@@ -79,7 +103,11 @@ export function useVoiceAnnouncements() {
     async (busNumber: string) => {
       const settings = getSettings();
       if (!settings.enabled) return;
-      speakBrowser(`Emergency alert for bus ${busNumber}.`);
+      speakBrowser(`Emergency alert for bus ${busNumber}.`, {
+        lang: settings.language,
+        rate: settings.speed,
+        voice: settings.voice,
+      });
     },
     [getSettings],
   );
@@ -88,7 +116,15 @@ export function useVoiceAnnouncements() {
     async (busNumber: string, eta: string) => {
       const settings = getSettings();
       if (!settings.enabled) return;
-      speakBrowser(`Bus ${busNumber} estimated arrival ${eta}.`);
+      const line =
+        settings.language === "bn-IN"
+          ? `বাস ${busNumber} আসতে সম্ভাব্য সময় ${eta}। প্রস্তুত থাকুন।`
+          : `Bus ${busNumber} estimated arrival ${eta}.`;
+      speakBrowser(line, {
+        lang: settings.language,
+        rate: settings.speed,
+        voice: settings.voice,
+      });
     },
     [getSettings],
   );

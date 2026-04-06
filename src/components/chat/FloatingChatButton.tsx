@@ -27,7 +27,8 @@ const FloatingChatButton: React.FC = () => {
       {!isOpen && (
         <Button
           onClick={toggleChat}
-          className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90 md:bottom-6 md:right-6"
+          className="fixed right-4 h-14 w-14 rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90 md:right-6"
+          style={{ bottom: "max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem))" }}
           size="icon"
         >
           <MessageCircle className="h-6 w-6" />
@@ -38,11 +39,21 @@ const FloatingChatButton: React.FC = () => {
       {isOpen && (
         <div className={`fixed z-50 transition-all duration-300 ease-in-out
           ${isMinimized 
-            ? 'bottom-4 right-4 w-80 h-auto' 
-            : 'bottom-0 right-0 top-0 left-0 md:bottom-4 md:right-4 md:top-auto md:left-auto md:w-96 md:h-[32rem]'
+            ? 'right-4 w-80 h-auto' 
+            : 'top-0 bottom-0 right-0 left-0 md:bottom-4 md:right-4 md:top-auto md:left-auto md:w-96 md:h-[32rem]'
           }
         `}>
-          <div className="relative h-full w-full">
+          <div
+            className="relative h-full w-full"
+            style={
+              isMinimized
+                ? { marginBottom: "max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem))" }
+                : {
+                    paddingTop: "env(safe-area-inset-top, 0px)",
+                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                  }
+            }
+          >
             {/* Close button for mobile */}
             <Button
               onClick={toggleChat}
