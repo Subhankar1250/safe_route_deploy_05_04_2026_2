@@ -32,6 +32,7 @@ import GeofenceMonitor from './GeofenceMonitor';
 import EmergencyPanicButton from './EmergencyPanicButton';
 import SpeedMonitor from './SpeedMonitor';
 import RouteDeviationMonitor from './RouteDeviationMonitor';
+import { notifyDriverGuardians } from "@/services/guardianTripNotifications";
 import FloatingChatButton from '../chat/FloatingChatButton';
 import { HolidayNotification } from '@/components/ui/holiday-notification';
 import { SchoolServiceCalendarCard } from '@/components/ui/SchoolServiceCalendarCard';
@@ -265,6 +266,14 @@ const DriverDashboard: React.FC = () => {
         title: "Legacy Trip Started",
         description: "Location is being shared with parents and the admin map.",
       });
+
+      void notifyDriverGuardians({
+        driverId: driverData.id,
+        title: "Bus trip started",
+        body: `${driverData.name} started the bus (Bus #${driverData.bus_number}). You can track live status in the app.`,
+        step: "trip_started",
+        data: { bus_number: driverData.bus_number, driver_name: driverData.name },
+      });
     } catch (trackingError) {
       console.error("Failed to start auto-tracking:", trackingError);
       setTripActive(false);
@@ -302,6 +311,16 @@ const DriverDashboard: React.FC = () => {
       title: "Legacy Trip Ended",
       description: "Trip completed and location tracking stopped.",
     });
+
+    if (driverData?.id) {
+      void notifyDriverGuardians({
+        driverId: driverData.id,
+        title: "Bus trip ended",
+        body: `Bus #${driverData.bus_number ?? "—"} — tracking has stopped for this run.`,
+        step: "trip_ended",
+        data: { bus_number: driverData.bus_number ?? "" },
+      });
+    }
   };
 
   if (loading) {
@@ -492,8 +511,22 @@ const DriverDashboard: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-4">
               {journeyType === 'none' ? (
                 <>
-                  <Button 
-                    onClick={() => setJourneyType('pickup')} 
+                  <Button
+                    onClick={() => {
+                      setJourneyType("pickup");
+                      if (driverData?.id) {
+                        void notifyDriverGuardians({
+                          driverId: driverData.id,
+                          title: "Pickup run started",
+                          body: `Bus #${driverData.bus_number ?? "—"} is on the pickup route. Watch for your child’s pickup alert.`,
+                          step: "pickup_journey_started",
+                          data: {
+                            bus_number: driverData.bus_number ?? "",
+                            driver_name: driverData.name ?? "",
+                          },
+                        });
+                      }
+                    }}
                     className="flex-1"
                     disabled={!tripActive}
                   >
@@ -501,9 +534,23 @@ const DriverDashboard: React.FC = () => {
                     <span className="hidden sm:inline">Start Pick Up Journey</span>
                     <span className="sm:hidden">Pick Up</span>
                   </Button>
-                  <Button 
-                    onClick={() => setJourneyType('drop')} 
-                    className="flex-1" 
+                  <Button
+                    onClick={() => {
+                      setJourneyType("drop");
+                      if (driverData?.id) {
+                        void notifyDriverGuardians({
+                          driverId: driverData.id,
+                          title: "Drop-off run started",
+                          body: `Bus #${driverData.bus_number ?? "—"} is on the drop-off route.`,
+                          step: "drop_journey_started",
+                          data: {
+                            bus_number: driverData.bus_number ?? "",
+                            driver_name: driverData.name ?? "",
+                          },
+                        });
+                      }
+                    }}
+                    className="flex-1"
                     variant="secondary"
                     disabled={!tripActive}
                   >
@@ -513,9 +560,30 @@ const DriverDashboard: React.FC = () => {
                   </Button>
                 </>
               ) : (
-                <Button 
-                  onClick={() => setJourneyType('none')} 
-                  variant="outline" 
+                <Button
+                  onClick={() => {
+                    const prev = journeyType;
+                    setJourneyType("none");
+                    if (!driverData?.id) return;
+                    if (prev === "pickup") {
+                      void notifyDriverGuardians({
+                        driverId: driverData.id,
+                        title: "Pickup run finished",
+                        body: `Bus #${driverData.bus_number ?? "—"} has ended the pickup leg of the route.`,
+                        step: "pickup_journey_ended",
+                        data: { bus_number: driverData.bus_number ?? "" },
+                      });
+                    } else if (prev === "drop") {
+                      void notifyDriverGuardians({
+                        driverId: driverData.id,
+                        title: "Drop-off run finished",
+                        body: `Bus #${driverData.bus_number ?? "—"} has ended the drop-off leg.`,
+                        step: "drop_journey_ended",
+                        data: { bus_number: driverData.bus_number ?? "" },
+                      });
+                    }
+                  }}
+                  variant="outline"
                   className="flex-1"
                 >
                   End {journeyType === 'pickup' ? 'Pick Up' : 'Drop'} Journey

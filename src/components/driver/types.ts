@@ -6,6 +6,8 @@ export interface Student {
   boardedAt: string | null;
   leftAt: string | null;
   isOnBoard: boolean;
+  /** Guardian marked absent for today; hide/disable stop to save time. */
+  isAbsentToday?: boolean;
   pickupPoint?: string;
   guardianName?: string;
   guardianMobile?: string;

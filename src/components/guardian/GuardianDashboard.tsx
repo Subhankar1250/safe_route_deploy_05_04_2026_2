@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   Activity,
@@ -39,6 +40,9 @@ import { logGuardianActivity } from '@/services/userLogService';
 import { registerGuardianWebPush } from '@/services/guardianPushService';
 import { Capacitor } from "@capacitor/core";
 import { locationPermissionHelpText } from "@/lib/nativeAndroidApp";
+import { useProximityAlarm } from "@/hooks/useProximityAlarm";
+import { markStudentAbsentToday } from "@/services/guardianAttendanceService";
+import { NotificationCenter } from "@/components/guardian/NotificationCenter";
 
 const GUARDIAN_NAV_FULL: DashboardNavItem[] = [
   { id: "section-g-notices", label: "Notices", icon: CalendarDays },
@@ -61,6 +65,7 @@ const GuardianDashboard: React.FC = () => {
   const [guardianLocation, setGuardianLocation] = useState<{latitude: number, longitude: number} | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [correctProfileId, setCorrectProfileId] = useState<string | null>(null);
+  const [absentToday, setAbsentToday] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const { user, logout } = useSimpleAuth();
@@ -68,6 +73,51 @@ const GuardianDashboard: React.FC = () => {
   const { announceBusArrival } = useVoiceAnnouncements();
 
   const student = students[0];
+
+  // 500m alarm: driver enters radius around guardian location
+  const proximity = useProximityAlarm({
+    enabled: !!student && !!guardianLocation && !!driverLocation?.is_active,
+    guardianLocation,
+    driverLocation: driverLocation
+      ? { latitude: driverLocation.latitude, longitude: driverLocation.longitude }
+      : null,
+    radiusMeters: 500,
+    cooldownMs: 5 * 60 * 1000,
+    onTriggered: () => {
+      toast({
+        title: "সতর্কতা",
+        description:
+          "ড্রাইভার ৫০০ মিটারের মধ্যে চলে এসেছে, আপনি বাচ্চাকে নিয়ে প্রস্তুত থাকুন।",
+      });
+    },
+  });
+
+  const guardianProfileId = correctProfileId || user?.id || null;
+
+  const toggleAbsent = async () => {
+    if (!guardianProfileId || !student?.student_id) return;
+    const next = !absentToday;
+    const res = await markStudentAbsentToday({
+      guardianProfileId,
+      studentId: student.student_id,
+      absent: next,
+    });
+    if (!res.ok) {
+      toast({
+        title: "Could not update absent",
+        description: res.message ?? "Try again",
+        variant: "destructive",
+      });
+      return;
+    }
+    setAbsentToday(next);
+    toast({
+      title: next ? "Marked absent" : "Marked present",
+      description: next
+        ? "Driver will see this student as absent today."
+        : "Driver will see this student as present today.",
+    });
+  };
 
   const guardianNavItems = useMemo(() => {
     if (!student) return GUARDIAN_NAV_MINIMAL;
@@ -259,6 +309,7 @@ const GuardianDashboard: React.FC = () => {
         >
           <HolidayNotification />
           <SchoolServiceCalendarCard variant="todayOnly" />
+          <NotificationCenter profileId={guardianProfileId} />
         </section>
 
         {student ? (
@@ -284,6 +335,19 @@ const GuardianDashboard: React.FC = () => {
                        {student.bus_number}
                      </p>
                    </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={absentToday ? "secondary" : "destructive"}
+                    onClick={() => void toggleAbsent()}
+                  >
+                    {absentToday ? "Undo absent (Today)" : "Mark Absent (Today)"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    If marked absent, the driver list will gray out this stop for today.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -393,16 +457,15 @@ const GuardianDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Missing Pickup Location Warning */}
-                    {driverLocation && driverLocation.is_active && !estimatedTime && student && 
-                     (!student.pickup_location_lat || !student.pickup_location_lng) && (
+                    {/* Generic ETA warning */}
+                    {driverLocation && driverLocation.is_active && !estimatedTime && (
                       <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                         <div className="flex items-center gap-2">
                           <Clock className="h-5 w-5 text-orange-600" />
                           <span className="font-medium text-orange-900">Cannot Calculate Arrival Time</span>
                         </div>
                         <div className="mt-1 text-sm text-orange-700">
-                          Your pickup location coordinates are not set. Please contact the school administrator to add your pickup location coordinates for accurate arrival time estimates.
+                          Waiting for stable live location from your phone and the driver phone.
                         </div>
                       </div>
                     )}
@@ -444,12 +507,18 @@ const GuardianDashboard: React.FC = () => {
               studentIds={[student.student_id]} 
               studentName={student.student_name}
               busNumber={student.bus_number}
+              driverLocation={driverLocation ? {
+                latitude: driverLocation.latitude,
+                longitude: driverLocation.longitude,
+                speed_kmh: driverLocation.speed_kmh,
+              } : null}
+              guardianLocation={guardianLocation}
             />
             </section>
 
             {/* Live Tracking Map */}
             <section id="section-g-map" className="scroll-mt-28" aria-label="Live map">
-            <LiveTrackingMap studentBusNumber={student.bus_number} />
+            <LiveTrackingMap studentBusNumber={student.bus_number} guardianLocation={guardianLocation} />
             </section>
 
             {/* Pickup & Drop History */}

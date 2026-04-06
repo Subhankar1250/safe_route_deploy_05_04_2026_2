@@ -31,6 +31,38 @@ export const calculateDistance = (
   return distance;
 };
 
+/** Distance in meters (Haversine). */
+export const calculateDistanceMeters = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number => calculateDistance(lat1, lon1, lat2, lon2) * 1000;
+
+export type EtaResult = {
+  distanceKm: number;
+  durationMinutes: number;
+  label: string;
+};
+
+/** Shared ETA logic used by both driver + guardian portals. */
+export function calculateEtaFromDistance(distanceKm: number, speedKmh: number): EtaResult {
+  const d = Number(distanceKm);
+  const s = Number(speedKmh);
+  const safeSpeed = Number.isFinite(s) && s >= 8 && s <= 90 ? s : 28;
+  const minutes = estimateTravelTime(d, safeSpeed);
+  const durationMinutes = Math.max(0, Math.round(minutes));
+
+  const label =
+    !Number.isFinite(d) ? "—" : d < 0.1 ? "Arrived" : durationMinutes < 1 ? "Less than 1 min" : formatTravelTime(minutes);
+
+  return {
+    distanceKm: Number.isFinite(d) ? d : NaN,
+    durationMinutes,
+    label,
+  };
+}
+
 /**
  * Convert degrees to radians
  * @param degrees Angle in degrees

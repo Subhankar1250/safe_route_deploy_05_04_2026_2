@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { calculateDistance, estimateTravelTime, formatTravelTime } from '@/utils/locationUtils';
+import { calculateDistance, calculateEtaFromDistance } from '@/utils/locationUtils';
 
 interface StudentWithDriver {
   student_id: string;
@@ -111,14 +111,12 @@ export const useGuardianStudents = (profileId: string | null) => {
             location.speed_kmh != null && location.speed_kmh >= 8 && location.speed_kmh <= 90
               ? location.speed_kmh
               : 28;
-          const timeInMinutes = estimateTravelTime(distance, roadKmh);
+          const eta = calculateEtaFromDistance(distance, roadKmh);
 
           if (distance < 0.1) {
             setEstimatedTime('Arrived');
-          } else if (timeInMinutes < 1) {
-            setEstimatedTime('Less than 1 min');
           } else {
-            setEstimatedTime(formatTravelTime(timeInMinutes));
+            setEstimatedTime(eta.label === "—" ? null : eta.label);
           }
         } else {
           setEstimatedTime(null);

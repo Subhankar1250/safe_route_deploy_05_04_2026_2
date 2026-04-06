@@ -15,13 +15,17 @@ interface LiveBusLocationProps {
   longitude: number;
   busNumber: string;
   showDriverDot?: boolean;
+  guardianLatitude?: number | null;
+  guardianLongitude?: number | null;
 }
 
 const LiveBusLocation: React.FC<LiveBusLocationProps> = ({ 
   latitude, 
   longitude, 
   busNumber,
-  showDriverDot = true
+  showDriverDot = true,
+  guardianLatitude = null,
+  guardianLongitude = null,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<Map | null>(null);
@@ -36,7 +40,7 @@ const LiveBusLocation: React.FC<LiveBusLocationProps> = ({
       // Create a vector source to hold our features
       const vectorSource = new VectorSource();
       
-      // Add bus marker
+      // Add bus marker (driver)
       const busFeature = new Feature({
         geometry: new Point(busLocation),
         name: `Bus ${busNumber}`
@@ -70,6 +74,31 @@ const LiveBusLocation: React.FC<LiveBusLocationProps> = ({
       }
       
       vectorSource.addFeature(busFeature);
+
+      // Add guardian marker when available
+      if (guardianLatitude != null && guardianLongitude != null) {
+        const guardianLoc = fromLonLat([guardianLongitude, guardianLatitude]);
+        const guardianFeature = new Feature({
+          geometry: new Point(guardianLoc),
+          name: "You",
+        });
+        guardianFeature.setStyle(
+          new Style({
+            image: new Icon({
+              src:
+                "data:image/svg+xml;charset=utf-8," +
+                encodeURIComponent(`
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+                    <circle cx="9" cy="9" r="7" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
+                  </svg>
+                `),
+              scale: 1,
+              anchor: [0.5, 0.5],
+            }),
+          }),
+        );
+        vectorSource.addFeature(guardianFeature);
+      }
       
       // Create a vector layer for the markers
       const vectorLayer = new VectorLayer({
@@ -140,13 +169,37 @@ const LiveBusLocation: React.FC<LiveBusLocationProps> = ({
         }
         
         source.addFeature(busFeature);
+
+        if (guardianLatitude != null && guardianLongitude != null) {
+          const guardianLoc = fromLonLat([guardianLongitude, guardianLatitude]);
+          const guardianFeature = new Feature({
+            geometry: new Point(guardianLoc),
+            name: "You",
+          });
+          guardianFeature.setStyle(
+            new Style({
+              image: new Icon({
+                src:
+                  "data:image/svg+xml;charset=utf-8," +
+                  encodeURIComponent(`
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+                      <circle cx="9" cy="9" r="7" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
+                    </svg>
+                  `),
+                scale: 1,
+                anchor: [0.5, 0.5],
+              }),
+            }),
+          );
+          source.addFeature(guardianFeature);
+        }
         
         // Center on bus location
         view.setCenter(busLocation);
         view.setZoom(15);
       }
     }
-  }, [latitude, longitude, busNumber, showDriverDot]);
+  }, [latitude, longitude, busNumber, showDriverDot, guardianLatitude, guardianLongitude]);
   
   return (
     <div ref={mapRef} className="w-full h-full min-h-[300px] relative">

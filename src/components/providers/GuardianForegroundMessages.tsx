@@ -3,9 +3,31 @@
 import { useEffect, useRef } from "react";
 import { useSimpleAuth } from "@/hooks/useSimpleAuth";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  showGuardianAndroidLocalNotification,
+  type GuardianBroadcastPayload,
+} from "@/lib/guardianRealtimeNotify";
+import { appendGuardianNotificationHistory } from "@/services/guardianNotificationCenter";
+
+/** Must match `appNotifyTopic` in Supabase Edge `realtimeBroadcast.ts`. */
+export const GUARDIAN_APP_NOTIFY_TOPIC_PREFIX = "app-notify-";
+
+function parseBroadcastPayload(raw: unknown): GuardianBroadcastPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const title = typeof o.title === "string" ? o.title : null;
+  const body = typeof o.body === "string" ? o.body : null;
+  if (!title || !body) return null;
+  const step = typeof o.step === "string" ? o.step : undefined;
+  const data = o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>) : undefined;
+  return { title, body, step, data };
+}
 
 /**
- * When a guardian has the app open, show in-app toasts for FCM data (background still uses the service worker).
+ * Guardian: Supabase Realtime Broadcast (WebSocket) — no Firebase.
+ * Works when the app is open or the WebView is still connected (Android Capacitor).
+ * Tray alerts on Android use @capacitor/local-notifications (foreground / short background).
  */
 export function GuardianForegroundMessages() {
   const { user } = useSimpleAuth();
@@ -13,36 +35,47 @@ export function GuardianForegroundMessages() {
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  const guardianId =
-    user?.user_type === "guardian" ? user.id : null;
+  const guardianId = user?.user_type === "guardian" ? user.id : null;
 
   useEffect(() => {
     if (!guardianId) return;
 
-    let unsubscribe: (() => void) | undefined;
+    const topic = `${GUARDIAN_APP_NOTIFY_TOPIC_PREFIX}${guardianId}`;
 
-    void (async () => {
-      try {
-        const { getMessaging, onMessage, isSupported } = await import("firebase/messaging");
-        const { default: app } = await import("@/config/firebase");
-        const ok = await isSupported().catch(() => false);
-        if (!ok) return;
+    const channel = supabase
+      .channel(topic, {
+        config: { broadcast: { ack: false } },
+      })
+      .on(
+        "broadcast",
+        { event: "notification" },
+        (payload: { payload?: unknown }) => {
+          const inner = payload?.payload ?? payload;
+          const parsed = parseBroadcastPayload(inner);
+          if (!parsed) return;
 
-        const messaging = getMessaging(app);
-        unsubscribe = onMessage(messaging, (payload) => {
-          const n = payload.notification;
           toastRef.current({
-            title: n?.title ?? "Notification",
-            description: n?.body ?? undefined,
+            title: parsed.title,
+            description: parsed.body,
           });
-        });
-      } catch {
-        /* messaging unavailable */
-      }
-    })();
+
+          appendGuardianNotificationHistory(guardianId, {
+            title: parsed.title,
+            body: parsed.body,
+            step: parsed.step,
+          });
+
+          void showGuardianAndroidLocalNotification(parsed.title, parsed.body);
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.warn("[guardian realtime] channel error:", topic);
+        }
+      });
 
     return () => {
-      unsubscribe?.();
+      void supabase.removeChannel(channel);
     };
   }, [guardianId]);
 

@@ -56,7 +56,9 @@ export const sendStudentActionNotification = async (data: StudentActionNotificat
                 data: {
                   url: "/guardian/dashboard",
                   action: data.action,
+                  step: data.action === "pickup" ? "student_pickup" : "student_drop",
                   student: data.student_name,
+                  bus: data.bus_number,
                 },
               },
             },

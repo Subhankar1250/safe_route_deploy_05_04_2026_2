@@ -8,9 +8,10 @@ import LiveBusLocation from './LiveBusLocation';
 
 interface LiveTrackingMapProps {
   studentBusNumber: string;
+  guardianLocation?: { latitude: number; longitude: number } | null;
 }
 
-const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({ studentBusNumber }) => {
+const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({ studentBusNumber, guardianLocation }) => {
   const { locations } = useLiveTracking();
   const [busLocation, setBusLocation] = useState<{
     latitude: number;
@@ -68,6 +69,8 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({ studentBusNumber }) =
                 latitude={busLocation.latitude}
                 longitude={busLocation.longitude}
                 busNumber={studentBusNumber}
+                guardianLatitude={guardianLocation?.latitude ?? null}
+                guardianLongitude={guardianLocation?.longitude ?? null}
               />
             </div>
 

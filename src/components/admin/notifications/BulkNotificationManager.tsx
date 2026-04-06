@@ -32,7 +32,12 @@ const BulkNotificationManager: React.FC = () => {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [icon, setIcon] = useState('/logo-placeholder.svg');
-  const [userTypes, setUserTypes] = useState<string[]>(['admin', 'driver', 'guardian']);
+  const [userTypes, setUserTypes] = useState<string[]>([
+    'admin',
+    'guardian_admin',
+    'driver',
+    'guardian',
+  ]);
   const [loading, setLoading] = useState(false);
   const [lastResult, setLastResult] = useState<NotificationResult | null>(null);
 
@@ -60,10 +65,10 @@ const BulkNotificationManager: React.FC = () => {
 
     try {
       const onlyGuardian =
-        userTypes.length === 1 && userTypes[0] === 'guardian';
+        userTypes.length === 1 && userTypes[0] === "guardian";
       const onlyAdminSide =
         userTypes.length > 0 &&
-        userTypes.every((t) => t === 'admin' || t === 'guardian_admin');
+        userTypes.every((t) => t === "admin" || t === "guardian_admin");
       const onlyDriver =
         userTypes.length === 1 && userTypes[0] === 'driver';
       let defaultUrl = '/';
@@ -71,7 +76,7 @@ const BulkNotificationManager: React.FC = () => {
       else if (onlyAdminSide) defaultUrl = '/admin/dashboard';
       else if (onlyDriver) defaultUrl = '/driver/dashboard';
 
-      const { data, error } = await supabase.functions.invoke('send-bulk-notification', {
+      const { data, error } = await supabase.functions.invoke("send-bulk-notification", {
         body: {
           title: title.trim(),
           body: body.trim(),
@@ -79,7 +84,7 @@ const BulkNotificationManager: React.FC = () => {
           badge: icon,
           userTypes,
           data: {
-            type: 'bulk_announcement',
+            type: "bulk_announcement",
             admin_sent: true,
             url: defaultUrl,
           },
@@ -87,7 +92,22 @@ const BulkNotificationManager: React.FC = () => {
       });
 
       if (error) {
-        throw error;
+        const ctx = (error as { context?: { json?: () => Promise<unknown> } }).context;
+        let detail = error.message;
+        if (ctx?.json) {
+          try {
+            const j = (await ctx.json()) as { details?: string; error?: string };
+            if (j?.details) detail = j.details;
+            else if (j?.error) detail = String(j.error);
+          } catch {
+            /* ignore */
+          }
+        }
+        throw new Error(detail);
+      }
+
+      if (data && typeof data === "object" && "error" in data && (data as { error?: string }).error) {
+        throw new Error(String((data as { error: string }).error));
       }
 
       setLastResult(data);
@@ -163,9 +183,14 @@ const BulkNotificationManager: React.FC = () => {
             <label className="text-sm font-medium">Send to User Types</label>
             <div className="flex flex-wrap gap-4">
               {[
-                { id: 'admin', label: 'Admins', color: 'bg-red-500' },
-                { id: 'driver', label: 'Drivers', color: 'bg-blue-500' },
-                { id: 'guardian', label: 'Guardians', color: 'bg-green-500' },
+                { id: "admin", label: "Admins", color: "bg-red-500" },
+                {
+                  id: "guardian_admin",
+                  label: "Parent coordinators",
+                  color: "bg-orange-500",
+                },
+                { id: "driver", label: "Drivers", color: "bg-blue-500" },
+                { id: "guardian", label: "Guardians", color: "bg-green-500" },
               ].map((type) => (
                 <div key={type.id} className="flex items-center space-x-2">
                   <Checkbox
@@ -196,9 +221,17 @@ const BulkNotificationManager: React.FC = () => {
 
           <Alert>
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              This will send a push notification to all users who have installed the PWA app 
-              and granted notification permissions, regardless of whether they are currently logged in.
+            <AlertDescription className="space-y-2 text-sm">
+              <p>
+                <strong>Supabase Realtime</strong> (WebSocket) delivers to logged-in users on the matching
+                channel — no Firebase required. Optional <strong>FCM</strong> adds web push when Edge secrets{" "}
+                <code className="rounded bg-muted px-1">FCM_SERVICE_ACCOUNT_JSON</code> or{" "}
+                <code className="rounded bg-muted px-1">FCM_SERVER_KEY</code> are set.
+              </p>
+              <p>
+                Guardians on the Android app should stay logged in; grant notification permission for tray
+                alerts via Capacitor local notifications.
+              </p>
             </AlertDescription>
           </Alert>
 

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { calculateDistance, calculateEtaFromDistance } from "@/utils/locationUtils";
 
 interface ETACalculation {
   studentId: string;
@@ -40,38 +41,11 @@ class ETACalculationService {
     return ETACalculationService.instance;
   }
 
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
   private effectiveSpeedKmh(gpsSpeed?: number | null): number {
     if (gpsSpeed != null && Number.isFinite(gpsSpeed) && gpsSpeed >= 8 && gpsSpeed <= 90) {
       return gpsSpeed;
     }
     return DEFAULT_ROAD_SPEED_KMH;
-  }
-
-  private minutesFromDistance(distanceKm: number, speedKmh: number): number {
-    if (distanceKm <= 0 || !Number.isFinite(distanceKm)) return 0;
-    return (distanceKm / speedKmh) * 60;
-  }
-
-  private formatEtaMinutes(minutes: number): string {
-    if (minutes < 1) return "Less than 1 min";
-    if (minutes < 60) return `${Math.round(minutes)} min`;
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
   }
 
   private async getStudentBusNumber(studentId: string): Promise<string | null> {
@@ -181,7 +155,7 @@ class ETACalculationService {
 
       if (!busLocation || !pickupLocation) return null;
 
-      const distance = this.calculateDistance(
+      const distance = calculateDistance(
         busLocation.latitude,
         busLocation.longitude,
         pickupLocation.latitude,
@@ -190,26 +164,14 @@ class ETACalculationService {
 
       if (!Number.isFinite(distance)) return null;
 
-      if (distance < 0.1) {
-        const eta: ETACalculation = {
-          studentId,
-          estimatedArrivalTime: "Arrived",
-          distanceKm: distance,
-          durationMinutes: 0,
-          lastUpdated: new Date(),
-        };
-        this.cachedETAs.set(studentId, eta);
-        return eta;
-      }
-
       const speed = this.effectiveSpeedKmh(busLocation.speedKmh);
-      const durationMinutes = this.minutesFromDistance(distance, speed);
+      const etaCalc = calculateEtaFromDistance(distance, speed);
 
       const eta: ETACalculation = {
         studentId,
-        estimatedArrivalTime: this.formatEtaMinutes(durationMinutes),
-        distanceKm: distance,
-        durationMinutes: Math.max(1, Math.round(durationMinutes)),
+        estimatedArrivalTime: etaCalc.label,
+        distanceKm: etaCalc.distanceKm,
+        durationMinutes: etaCalc.label === "Arrived" ? 0 : Math.max(1, etaCalc.durationMinutes),
         lastUpdated: new Date(),
       };
 

@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "description": "Vercel: connect repo, set NEXT_PUBLIC_SITE_URL=https://saferoute.sishutirtha.co.in, deploy (next build). Android APK: capacitor loads that URL; run npm run cap:assets:android after changing resources/app-icon.svg, then npm run android:bundle. Icons: npm run icons:generate.",
   "scripts": {
+    "postinstall": "node scripts/fix-capacitor-proguard.cjs",
+    "android:fix-proguard": "node scripts/fix-capacitor-proguard.cjs",
     "clean": "node -e \"const fs=require('fs');['.next','node_modules/.cache'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch(e){}})\"",
     "dev:reset": "npm run clean && next dev -p 3000",
     "dev": "next dev -p 3000",
@@ -25,6 +27,7 @@
     "icons:generate": "node scripts/generate-brand-assets.mjs",
     "cap:assets:android": "npm run icons:generate && npx capacitor-assets generate --android",
     "android:bundle": "npm run build:static && npx cap sync android",
+    "android:build:debug": "npm run android:bundle && cd android && gradlew.bat assembleDebug",
     "android:open": "npm run android:bundle && npx cap open android"
   },
   "dependencies": {
@@ -38,6 +41,7 @@
     "@capacitor/haptics": "^7.0.1",
     "@capacitor/ios": "^7.4.2",
     "@capacitor/keyboard": "^7.0.1",
+    "@capacitor/local-notifications": "^7.0.6",
     "@capacitor/status-bar": "^7.0.1",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.0",

@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Student } from './types';
 import { supabase } from '@/integrations/supabase/client';
 import { useSimpleAuth } from '@/hooks/useSimpleAuth';
+import { todayIstDate } from '@/utils/istDate';
 
 export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup' | 'drop' = 'none') => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -75,6 +76,24 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
           return;
         }
 
+        const absentSet = new Set<string>();
+        try {
+          const { data: absentData, error: absentError } = await supabase.functions.invoke(
+            "get-driver-absent-today",
+            {
+              body: { driver_id: driver.id, date: todayIstDate() },
+            },
+          );
+          if (!absentError && absentData && typeof absentData === "object") {
+            const ids = (absentData as { absent_student_ids?: unknown }).absent_student_ids;
+            if (Array.isArray(ids)) {
+              for (const id of ids) if (typeof id === "string") absentSet.add(id);
+            }
+          }
+        } catch {
+          /* optional */
+        }
+
         const transformedStudents: Student[] = (studentsList || []).map((student) => ({
           id: student.id,
           name: student.name,
@@ -82,6 +101,7 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
           boardedAt: null,
           leftAt: null,
           isOnBoard: false,
+          isAbsentToday: absentSet.has(student.id),
           pickupPoint: student.pickup_point,
           guardianName: student.guardian_name,
           guardianMobile: student.guardian_mobile,

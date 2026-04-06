@@ -5,14 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Clock, MapPin, Bus, RefreshCw, Navigation } from "lucide-react";
 import { etaCalculationService, ETACalculation } from '@/services/etaCalculationService';
 import { useToast } from '@/hooks/use-toast';
+import { calculateDistance, calculateEtaFromDistance } from '@/utils/locationUtils';
 
 interface ETADisplayProps {
   studentIds: string[];
   studentName?: string;
   busNumber?: string;
+  driverLocation?: { latitude: number; longitude: number; speed_kmh?: number | undefined } | null;
+  guardianLocation?: { latitude: number; longitude: number } | null;
 }
 
-const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNumber }) => {
+const ETADisplay: React.FC<ETADisplayProps> = ({
+  studentIds,
+  studentName,
+  busNumber,
+  driverLocation,
+  guardianLocation,
+}) => {
   const [etas, setEtas] = useState<Map<string, ETACalculation>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -55,6 +64,22 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
   // Get primary ETA (for single student or first student)
   const primaryETA =
     stableStudentIds.length > 0 ? etas.get(stableStudentIds[0]) : null;
+
+  const liveGuardianEta = useMemo(() => {
+    if (!driverLocation || !guardianLocation) return null;
+    const distance = calculateDistance(
+      driverLocation.latitude,
+      driverLocation.longitude,
+      guardianLocation.latitude,
+      guardianLocation.longitude,
+    );
+    const eta = calculateEtaFromDistance(distance, driverLocation.speed_kmh ?? 28);
+    return {
+      estimatedArrivalTime: eta.label,
+      distanceKm: eta.distanceKm,
+      durationMinutes: eta.label === "Arrived" ? 0 : eta.durationMinutes,
+    };
+  }, [driverLocation, guardianLocation]);
 
   const getETAColor = (eta: ETACalculation) => {
     if (eta.estimatedArrivalTime === 'Arrived') return 'default';
@@ -101,36 +126,40 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
             <Bus className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>No students assigned for ETA calculation</p>
           </div>
-        ) : primaryETA ? (
+        ) : (liveGuardianEta || primaryETA) ? (
           <>
+            {(() => {
+              const base = liveGuardianEta || primaryETA!;
+              return (
+                <>
             {/* Primary ETA Display */}
             <div className="text-center">
               <div className="flex items-center justify-center gap-2 mb-2">
-                {getETAIcon(primaryETA)}
+                {getETAIcon(base as ETACalculation)}
                 <span className="text-sm text-muted-foreground">
-                  {studentName || 'Your child\'s bus'}
+                  {liveGuardianEta ? "Driver → Your live location" : (studentName || "Your child's bus")}
                 </span>
               </div>
               
               <div className={`text-3xl font-bold mb-2 ${
-                primaryETA.estimatedArrivalTime === 'Arrived' 
+                base.estimatedArrivalTime === 'Arrived' 
                   ? 'text-green-600' 
-                  : primaryETA.durationMinutes <= 5 
+                  : base.durationMinutes <= 5 
                     ? 'text-red-600' 
                     : 'text-primary'
               }`}>
-                {primaryETA.estimatedArrivalTime}
+                {base.estimatedArrivalTime}
               </div>
 
-              <Badge variant={getETAColor(primaryETA)} className="mb-3">
-                {primaryETA.estimatedArrivalTime === 'Arrived' 
+              <Badge variant={getETAColor(base as ETACalculation)} className="mb-3">
+                {base.estimatedArrivalTime === 'Arrived' 
                   ? 'Bus has arrived!' 
                   : 'Estimated arrival'}
               </Badge>
 
               {/* Distance Information */}
               <div className="text-sm text-muted-foreground">
-                {formatDistance(primaryETA.distanceKm)}
+                {formatDistance(base.distanceKm)}
               </div>
             </div>
 
@@ -138,20 +167,20 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
             <div className="grid grid-cols-2 gap-4 pt-3 border-t">
               <div className="text-center">
                 <div className="text-lg font-semibold">
-                  {primaryETA.distanceKm.toFixed(1)}km
+                  {base.distanceKm.toFixed(1)}km
                 </div>
                 <div className="text-sm text-muted-foreground">Distance</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold">
-                  {primaryETA.estimatedArrivalTime === 'Arrived' ? '0' : primaryETA.durationMinutes}min
+                  {base.estimatedArrivalTime === 'Arrived' ? '0' : base.durationMinutes}min
                 </div>
                 <div className="text-sm text-muted-foreground">Travel Time</div>
               </div>
             </div>
 
             {/* Status Messages */}
-            {primaryETA.estimatedArrivalTime === 'Arrived' && (
+            {base.estimatedArrivalTime === 'Arrived' && (
               <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                 <div className="flex items-center gap-2 text-green-800">
                   <MapPin className="h-4 w-4" />
@@ -163,7 +192,7 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
               </div>
             )}
 
-            {primaryETA.estimatedArrivalTime !== 'Arrived' && primaryETA.durationMinutes <= 5 && (
+            {base.estimatedArrivalTime !== 'Arrived' && base.durationMinutes <= 5 && (
               <div className="bg-red-50 p-3 rounded-lg border border-red-200">
                 <div className="flex items-center gap-2 text-red-800">
                   <Navigation className="h-4 w-4" />
@@ -196,6 +225,9 @@ const ETADisplay: React.FC<ETADisplayProps> = ({ studentIds, studentName, busNum
                 </div>
               </div>
             )}
+                </>
+              );
+            })()}
           </>
         ) : (
           <div className="text-center py-6">

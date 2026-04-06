@@ -51,19 +51,27 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between p-2 border rounded-md hover:bg-muted/50">
+      <div
+        className={[
+          "flex items-center justify-between p-2 border rounded-md",
+          student.isAbsentToday ? "opacity-55 bg-muted/30" : "hover:bg-muted/50",
+        ].join(" ")}
+      >
         <div className="flex items-center space-x-2">
           <Checkbox
             id={`student-${student.id}`}
             checked={student.isOnBoard}
             onCheckedChange={handleCheckInOut}
-            disabled={!isActive}
+            disabled={!isActive || !!student.isAbsentToday}
           />
           <div>
             <label htmlFor={`student-${student.id}`} className="font-medium cursor-pointer text-foreground">
               {student.name}
             </label>
             <p className="text-sm text-muted-foreground">Grade: {student.grade}</p>
+            {student.isAbsentToday && (
+              <p className="text-xs font-medium text-amber-700">Absent today</p>
+            )}
             {student.pickupPoint && (
               <p className="text-xs text-muted-foreground">Pickup: {student.pickupPoint}</p>
             )}
@@ -91,7 +99,7 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
             <Button
               variant="ghost"
               size="sm"
-              disabled={!isActive}
+              disabled={!isActive || !!student.isAbsentToday}
               onClick={handleCheckInOut}
             >
               {journeyType === 'pickup' 
@@ -105,7 +113,7 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
             <Button
               variant="ghost"
               size="sm"
-              disabled={!isActive}
+              disabled={!isActive || !!student.isAbsentToday}
               onClick={handleCheckInOut}
             >
               {student.isOnBoard ? 'Check Out' : 'Check In'}

@@ -25,6 +25,7 @@ const loginShellFallback: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "flex-start",
   padding: "1rem",
+  paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
   paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
   position: "relative",
   overflowX: "hidden",
@@ -120,7 +121,7 @@ const Login: React.FC = () => {
 
   return (
     <div
-      className="relative flex min-h-dvh w-full flex-col items-center justify-start gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 py-6 pb-[max(3rem,env(safe-area-inset-bottom,0px))] sm:justify-center sm:px-4 sm:py-10 sm:pb-12"
+      className="relative flex min-h-dvh w-full flex-col items-center justify-start gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(3rem,env(safe-area-inset-bottom,0px))] sm:justify-center sm:px-4 sm:py-10 sm:pb-12"
       style={loginShellFallback}
     >
       <div

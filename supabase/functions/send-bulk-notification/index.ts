@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
+import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
+import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,71 +18,6 @@ interface NotificationRequest {
   userTypes?: string[];
 }
 
-const FCM_BATCH = 1000;
-
-function fcmStringData(
-  data?: Record<string, unknown>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!data) return out;
-  for (const [k, v] of Object.entries(data)) {
-    if (v === undefined || v === null) continue;
-    out[k] = typeof v === "string" ? v : JSON.stringify(v);
-  }
-  return out;
-}
-
-const sendFCMNotification = async (
-  tokens: string[],
-  notification: {
-    title: string;
-    body: string;
-    icon?: string;
-    badge?: string;
-    data?: Record<string, unknown>;
-  },
-) => {
-  const fcmServerKey = Deno.env.get("FCM_SERVER_KEY");
-  if (!fcmServerKey) {
-    throw new Error("FCM_SERVER_KEY environment variable is not set");
-  }
-
-  const merged: Record<string, unknown> = {
-    ...(notification.data || {}),
-    timestamp: new Date().toISOString(),
-  };
-
-  const payload = {
-    registration_ids: tokens,
-    notification: {
-      title: notification.title,
-      body: notification.body,
-      icon: notification.icon || "/logo-placeholder.svg",
-      badge: notification.badge || "/logo-placeholder.svg",
-    },
-    data: fcmStringData(merged),
-  };
-
-  const response = await fetch("https://fcm.googleapis.com/fcm/send", {
-    method: "POST",
-    headers: {
-      Authorization: `key=${fcmServerKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(`FCM request failed: ${response.statusText}`);
-  }
-
-  return await response.json();
-};
-
-/**
- * Collect unique FCM tokens: profiles.fcm_token plus guardian web tokens from
- * guardian_push_tokens (same logic as send-push-notification).
- */
 async function collectAllTargetTokens(
   supabase: ReturnType<typeof createClient>,
   userTypes?: string[],
@@ -135,6 +72,25 @@ async function collectAllTargetTokens(
   return [...out];
 }
 
+async function collectProfileIdsForBulk(
+  supabase: ReturnType<typeof createClient>,
+  userTypes?: string[],
+): Promise<string[]> {
+  if (userTypes && userTypes.length > 0) {
+    const { data: profiles, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .in("user_type", userTypes);
+
+    if (error) throw error;
+    return [...new Set((profiles || []).map((p) => p.id as string).filter(Boolean))];
+  }
+
+  const { data: profiles, error } = await supabase.from("profiles").select("id");
+  if (error) throw error;
+  return [...new Set((profiles || []).map((p) => p.id as string).filter(Boolean))];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -156,36 +112,27 @@ serve(async (req) => {
       });
     }
 
+    const profileIds = await collectProfileIdsForBulk(supabaseClient, userTypes);
+
+    const rtPayload: AppBroadcastPayload = {
+      title,
+      body,
+      step: typeof data?.type === "string" ? String(data.type) : "bulk_announcement",
+      data: data ?? { type: "bulk_announcement" },
+    };
+
+    const { ok: rtOk, fail: rtFail } = await broadcastToProfiles(
+      profileIds,
+      rtPayload,
+      "notification",
+    );
+
     const tokens = await collectAllTargetTokens(supabaseClient, userTypes);
 
-    if (tokens.length === 0) {
-      return new Response(
-        JSON.stringify({
-          message: "No users found with FCM tokens",
-          sent: 0,
-          failed: 0,
-          total_tokens: 0,
-          total_users: 0,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const notification = { title, body, icon, badge, data };
-    const fcmResults: unknown[] = [];
-    let failedCount = 0;
-
-    for (let i = 0; i < tokens.length; i += FCM_BATCH) {
-      const chunk = tokens.slice(i, i + FCM_BATCH);
-      try {
-        fcmResults.push(await sendFCMNotification(chunk, notification));
-      } catch (e) {
-        console.error("FCM batch error:", e);
-        failedCount += chunk.length;
-      }
-    }
-
-    const sentCount = tokens.length - failedCount;
+    const notification: FcmNotification = { title, body, icon, badge, data };
+    const fcm = await sendFcmToTokensIfConfigured(tokens, notification);
+    const failedCount = fcm?.errors.length ?? 0;
+    const sentCount = fcm ? Math.max(0, tokens.length - failedCount) : 0;
 
     const { error: logError } = await supabaseClient.from("notification_logs").insert({
       title: `BULK: ${title}`,
@@ -193,10 +140,15 @@ serve(async (req) => {
       user_type: userTypes?.length ? userTypes.join(",") : "all",
       tokens_sent: sentCount,
       fcm_response: {
+        mode: fcm?.mode ?? null,
         total_tokens: tokens.length,
-        batches: fcmResults.length,
+        profile_count: profileIds.length,
+        realtime_broadcast_ok: rtOk,
+        realtime_broadcast_fail: rtFail,
+        batches: fcm?.results.length ?? 0,
         failed_tokens: failedCount,
-        results: fcmResults,
+        results: fcm?.results,
+        errors: fcm?.errors,
       },
     });
 
@@ -204,14 +156,16 @@ serve(async (req) => {
       console.error("Error logging notification:", logError);
     }
 
-    // total_users: legacy field for admin UI — same count as FCM endpoints (not unique people).
     return new Response(
       JSON.stringify({
         message: "Bulk notification completed",
+        mode: fcm?.mode ?? "realtime",
         total_tokens: tokens.length,
-        total_users: tokens.length,
+        total_profiles: profileIds.length,
         sent: sentCount,
         failed: failedCount,
+        realtime_broadcast: { ok: rtOk, fail: rtFail },
+        errors: fcm?.errors?.length ? fcm.errors : undefined,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
