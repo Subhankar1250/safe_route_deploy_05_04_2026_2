@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSimpleAuth } from "@/hooks/useSimpleAuth";
 import { shouldHideAdminLoginLink } from "@/lib/nativeAndroidApp";
+import { trackEvent } from "@/lib/analytics";
 
 /** Inline fallbacks only — do NOT set `overflow: hidden` here: it overrides Tailwind `overflow-y-auto`
  *  and traps tall mobile layouts so Login / Forgot PIN sit below the fold with no scroll. */
@@ -93,13 +94,16 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    trackEvent("login_submit", { role });
     setError(null);
     setLoading(true);
     try {
       await loginWithPortalPin(mobileNumber, pin, role);
+      trackEvent("login_success", { role });
       if (role === "driver") router.push("/driver/dashboard");
       else router.push("/guardian/dashboard");
     } catch (err: unknown) {
+      trackEvent("login_failure", { role });
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);

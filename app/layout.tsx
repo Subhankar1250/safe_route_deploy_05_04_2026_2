@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { AppProvidersLazy } from "@/components/providers/AppProvidersLazy";
 import "./globals.css";
 
@@ -55,6 +57,7 @@ export default function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
+  const clarityId = process.env.NEXT_PUBLIC_CLARITY_ID || "w89u87ruz4";
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
@@ -67,6 +70,22 @@ export default function RootLayout({
           }}
         />
         <AppProvidersLazy>{children}</AppProvidersLazy>
+        {process.env.NEXT_PUBLIC_GA_ID ? (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        ) : null}
+        <Script id="ms-clarity" strategy="afterInteractive">
+          {`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window, document, "clarity", "script", "${clarityId}");`}
+        </Script>
+        {process.env.NEXT_PUBLIC_HOTJAR_ID && process.env.NEXT_PUBLIC_HOTJAR_SV ? (
+          <Script id="hotjar" strategy="afterInteractive">
+            {`(function(h,o,t,j,a,r){h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};h._hjSettings={hjid:${process.env.NEXT_PUBLIC_HOTJAR_ID},hjsv:${process.env.NEXT_PUBLIC_HOTJAR_SV}};a=o.getElementsByTagName('head')[0];r=o.createElement('script');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;a.appendChild(r);})(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');`}
+          </Script>
+        ) : null}
+        {process.env.NEXT_PUBLIC_SMARTLOOK_PROJECT_KEY ? (
+          <Script id="smartlook" strategy="afterInteractive">
+            {`window.smartlook||(function(d){var o=smartlook=function(){o.api.push(arguments)},h=d.getElementsByTagName('head')[0];var c=d.createElement('script');o.api=[];c.async=true;c.type='text/javascript';c.charset='utf-8';c.src='https://web-sdk.smartlook.com/recorder.js';h.appendChild(c);})(document);smartlook('init', '${process.env.NEXT_PUBLIC_SMARTLOOK_PROJECT_KEY}');`}
+          </Script>
+        ) : null}
       </body>
     </html>
   );

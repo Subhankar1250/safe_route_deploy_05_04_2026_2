@@ -12,6 +12,8 @@ dist
 dist-ssr
 .next
 out
+# Left behind if static export is killed mid-build (see scripts/run-static-export.mjs)
+.api_backup_static_export
 *.local
 .env
 .env.*.local
@@ -39,3 +41,6 @@ android/capacitor-cordova-android-plugins/build/
 
 # Nested clone / accidental duplicate
 SafeRouteFinal/
+
+# Sentry Config File
+.env.sentry-build-plugin
