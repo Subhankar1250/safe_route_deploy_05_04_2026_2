@@ -1,15 +1,33 @@
 "use client";
 
-import Script from "next/script";
+import Clarity from "@microsoft/clarity";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 const DEFAULT_CLARITY = "w89u87ruz4";
 
+function readStoredUserForClarity(): { id: string; friendlyName: string } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("sishu_tirtha_user");
+    if (!raw) return null;
+    const u = JSON.parse(raw) as {
+      id?: string;
+      username?: string;
+      user_type?: string;
+    };
+    if (!u.id) return null;
+    const friendlyName = [u.user_type, u.username].filter(Boolean).join(" · ") || u.id;
+    return { id: u.id, friendlyName };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Loads one GA4 property + one Clarity project per page view.
- * Under `/admin`, uses `NEXT_PUBLIC_GA_ID_ADMIN` / `NEXT_PUBLIC_CLARITY_ID_ADMIN` when set,
- * otherwise falls back to the main site IDs so a single-property setup still works.
+ * GA4 via @next/third-parties; Microsoft Clarity via @microsoft/clarity (official SDK).
+ * `/admin` can use separate GA + Clarity project IDs when env vars are set.
  */
 export function RouteAwareAnalytics() {
   const pathname = usePathname() || "";
@@ -25,16 +43,44 @@ export function RouteAwareAnalytics() {
   const clarityId =
     isAdmin && adminClarity ? adminClarity : mainClarity;
 
+  const lastClarityProjectRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const switchingProject =
+      lastClarityProjectRef.current !== null &&
+      lastClarityProjectRef.current !== clarityId;
+
+    if (switchingProject) {
+      document.getElementById("clarity-script")?.remove();
+    }
+    lastClarityProjectRef.current = clarityId;
+
+    try {
+      Clarity.init(clarityId);
+    } catch {
+      /* non-blocking */
+    }
+  }, [clarityId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      try {
+        const u = readStoredUserForClarity();
+        if (u) {
+          Clarity.identify(u.id, undefined, pathname, u.friendlyName);
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 150);
+    return () => window.clearTimeout(id);
+  }, [pathname, clarityId]);
+
   return (
     <>
       {gaId ? <GoogleAnalytics key={gaId} gaId={gaId} /> : null}
-      <Script
-        id="ms-clarity-route"
-        key={clarityId}
-        strategy="afterInteractive"
-      >
-        {`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window, document, "clarity", "script", "${clarityId}");`}
-      </Script>
     </>
   );
 }
