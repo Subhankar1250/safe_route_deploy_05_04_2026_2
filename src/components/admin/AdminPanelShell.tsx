@@ -10,6 +10,35 @@ import {
 import { AdminSidebar } from "@/components/admin/layout/AdminSidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { CreditSep } from "@/components/ui/CreditSep";
+
+function AdminAnalyticsFooterNote() {
+  const gaAdmin = process.env.NEXT_PUBLIC_GA_ID_ADMIN?.trim();
+  const clarityAdmin = process.env.NEXT_PUBLIC_CLARITY_ID_ADMIN?.trim();
+  if (!gaAdmin && !clarityAdmin) return null;
+  return (
+    <p className="mt-2 max-w-2xl mx-auto text-[10px] leading-snug text-muted-foreground/90">
+      Admin dashboard session measurement:{" "}
+      {gaAdmin ? (
+        <>
+          Google Analytics{" "}
+          <span className="font-mono text-foreground/70">{gaAdmin}</span>
+        </>
+      ) : (
+        <>Google Analytics (main site property)</>
+      )}
+      {" · "}
+      {clarityAdmin ? (
+        <>
+          Microsoft Clarity{" "}
+          <span className="font-mono text-foreground/70">{clarityAdmin}</span>
+        </>
+      ) : (
+        <>Microsoft Clarity (main site project)</>
+      )}
+    </p>
+  );
+}
+
 export default function AdminPanelShell({
   children,
 }: {
@@ -69,6 +98,7 @@ export default function AdminPanelShell({
               <CreditSep className="text-muted-foreground/80" />
               <span className="font-normal">Subhankar Ghorui</span>
             </span>
+            <AdminAnalyticsFooterNote />
           </footer>
         </div>
       </div>

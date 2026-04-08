@@ -6,7 +6,10 @@ import { trackFirebaseEvent } from "@/lib/firebaseAnalytics";
 type EventParams = Record<string, string | number | boolean | null | undefined>;
 
 export function trackEvent(name: string, params?: EventParams) {
-  if (process.env.NEXT_PUBLIC_GA_ID) {
+  const hasGa =
+    Boolean(process.env.NEXT_PUBLIC_GA_ID?.trim()) ||
+    Boolean(process.env.NEXT_PUBLIC_GA_ID_ADMIN?.trim());
+  if (hasGa) {
     sendGAEvent("event", name, params ?? {});
   }
   void trackFirebaseEvent(name, params);
