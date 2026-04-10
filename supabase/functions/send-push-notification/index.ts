@@ -4,6 +4,7 @@ import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fc
 import { broadcastToProfile, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
 import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
+import { sendGuardianWhatsAppByProfileIds } from "../_shared/whatsappWebhook.ts";
 
 type Supabase = ReturnType<typeof createClient>;
 
@@ -212,6 +213,17 @@ serve(async (req) => {
       });
     }
 
+    const wa =
+      broadcastProfileIds.length > 0
+        ? await sendGuardianWhatsAppByProfileIds(
+            supabaseClient,
+            broadcastProfileIds,
+            `${notification.title}\n${notification.body}`,
+            step ?? "direct_notification",
+            "send-push-notification",
+          )
+        : { attempted: 0, sent: 0, failed: 0, errors: [] };
+
     if (!fcm && tokens.length === 0 && broadcastProfileIds.length === 0) {
       return new Response(
         JSON.stringify({
@@ -232,6 +244,7 @@ serve(async (req) => {
           realtime_only: true,
           realtime_broadcast_ok: rtOk,
           realtime_broadcast_fail: rtFail,
+          whatsapp: wa,
         },
       });
 
@@ -257,6 +270,7 @@ serve(async (req) => {
           error: "FCM not configured",
           realtime_broadcast_ok: rtOk,
           realtime_broadcast_fail: rtFail,
+          whatsapp: wa,
         },
       });
 
@@ -281,6 +295,7 @@ serve(async (req) => {
         mode: fcm?.mode,
         realtime_broadcast_ok: rtOk,
         realtime_broadcast_fail: rtFail,
+        whatsapp: wa,
         results: fcm?.results,
         errors: fcm?.errors,
       },

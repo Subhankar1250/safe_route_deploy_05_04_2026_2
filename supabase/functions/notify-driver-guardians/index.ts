@@ -4,6 +4,7 @@ import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fc
 import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
 import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
+import { sendGuardianWhatsAppByProfileIds } from "../_shared/whatsappWebhook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -130,6 +131,15 @@ serve(async (req) => {
       },
     });
 
+    const waMessage = `${title}\n${body}`;
+    const wa = await sendGuardianWhatsAppByProfileIds(
+      supabase,
+      guardianIds,
+      waMessage,
+      step ?? "trip_update",
+      "notify-driver-guardians",
+    );
+
     await supabase.from("notification_logs").insert({
       user_type: "guardian",
       title: `DRIVER_BROADCAST: ${title}`,
@@ -141,6 +151,7 @@ serve(async (req) => {
         driver_id,
         step,
         guardian_count: guardianIds.length,
+        whatsapp: wa,
         fcm_tokens: tokens.length,
         fcm: fcm
           ? { mode: fcm.mode, error_count: fcm.errors.length, results: fcm.results }
