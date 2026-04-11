@@ -41,9 +41,20 @@ export async function sendWhatsAppNotification(params: {
   }
 
   try {
+    const lower = webhookUrl.toLowerCase();
+    /** ngrok free tier interstitial + some WAFs block bare server fetches without a browser-like UA. */
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "SaveRoute-Supabase-Edge/1.0 (+https://saferoute.sishutirtha.co.in)",
+    };
+    if (lower.includes("ngrok-free.") || lower.includes("ngrok.io")) {
+      headers["ngrok-skip-browser-warning"] = "true";
+    }
+
     const res = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         phoneNumber: normalized,
         message: params.message,
