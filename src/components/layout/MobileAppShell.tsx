@@ -97,7 +97,7 @@ export function MobileAppShell({
         </header>
 
         <main
-          className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain space-y-4 px-3 py-3 pb-[max(5.5rem,env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-4 sm:py-4"
+          className="min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain space-y-4 px-3 py-3 pb-[max(5.5rem,env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-4 sm:py-4"
           style={{
             paddingBottom: "max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))",
             WebkitOverflowScrolling: "touch",

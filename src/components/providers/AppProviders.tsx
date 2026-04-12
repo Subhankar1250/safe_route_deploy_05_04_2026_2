@@ -54,7 +54,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             fallback={
               <div
                 style={{
-                  minHeight: "100vh",
+                  minHeight: "100dvh",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -77,7 +77,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               </div>
             }
           >
-            <div className="min-h-screen" style={{ minHeight: "100vh" }}>
+            <div className="relative w-full min-h-dvh">
               {children}
             </div>
           </Suspense>

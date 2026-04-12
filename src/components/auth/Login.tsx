@@ -23,24 +23,6 @@ import {
   writeGuardianSavedCredentials,
 } from "@/services/guardianSavedCredentials";
 
-/** Inline fallbacks only — do NOT set `overflow: hidden` here: it overrides Tailwind `overflow-y-auto`
- *  and traps tall mobile layouts so Login / Forgot PIN sit below the fold with no scroll. */
-const loginShellFallback: React.CSSProperties = {
-  minHeight: "100dvh",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "flex-start",
-  padding: "1rem",
-  paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
-  paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
-  position: "relative",
-  overflowX: "hidden",
-  background: "linear-gradient(165deg, #020617 0%, #0f172a 38%, #134e4a 72%, #14532d 100%)",
-  /* Readable default when Tailwind utilities fail to load */
-  color: "rgb(226, 232, 240)",
-};
-
 const Login: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -149,37 +131,41 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div
-      className="relative flex min-h-dvh w-full flex-col items-center justify-start gap-3 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(2rem,env(safe-area-inset-bottom,0px)+1rem)] touch-pan-y sm:gap-4 sm:px-4 sm:py-6 sm:pb-10 min-[840px]:min-h-dvh min-[840px]:justify-center min-[840px]:py-10"
-      style={{
-        ...loginShellFallback,
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
+    <>
       <div
-        className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] animate-pulse-slow rounded-full bg-blue-500/20 blur-3xl motion-reduce:animate-none"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -bottom-32 -right-32 h-[24rem] w-[24rem] animate-pulse-slow rounded-full bg-emerald-500/15 blur-3xl motion-reduce:animate-none [animation-delay:1s]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(56,189,248,0.12),transparent)]"
-        aria-hidden
-      />
-
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+        className="pointer-events-auto fixed right-3 z-[70] sm:right-5"
+        style={{ top: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+      >
         <div className="rounded-2xl border border-white/20 bg-white/10 p-1 shadow-xl shadow-slate-950/20 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/30">
           <SimpleThemeToggle />
         </div>
       </div>
 
-      <div className="relative z-10 flex w-full max-w-[28rem] flex-col gap-5 sm:gap-6">
+      <div
+        className="fixed inset-0 z-0 flex flex-col items-center gap-3 overflow-y-scroll overflow-x-hidden overscroll-y-auto bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 pb-[max(2.75rem,env(safe-area-inset-bottom,0px)+1.5rem)] pt-[max(0.75rem,env(safe-area-inset-top,0px))] text-slate-200 touch-pan-y sm:gap-4 sm:px-4 sm:py-6 sm:pb-12 min-[900px]:justify-center min-[900px]:py-12"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          color: "rgb(226, 232, 240)",
+        }}
+      >
+        <div
+          className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] animate-pulse-slow rounded-full bg-blue-500/20 blur-3xl motion-reduce:animate-none"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-32 -right-32 h-[24rem] w-[24rem] animate-pulse-slow rounded-full bg-emerald-500/15 blur-3xl motion-reduce:animate-none [animation-delay:1s]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(56,189,248,0.12),transparent)]"
+          aria-hidden
+        />
+
+        <div className="relative z-10 flex w-full max-w-[28rem] flex-col gap-5 py-1 sm:gap-6 sm:py-0">
         {driverMidnightMessage ? (
           <Alert className="rounded-2xl border-amber-200/80 bg-amber-50/95 text-amber-950 shadow-md dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-50">
             <AlertTitle>Session ended</AlertTitle>
@@ -293,8 +279,9 @@ const Login: React.FC = () => {
         </div>
 
         <LoginFooter />
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

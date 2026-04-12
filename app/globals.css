@@ -108,12 +108,17 @@
   html {
     -webkit-text-size-adjust: 100%;
     overflow-x: hidden;
+    /* Let the document grow with content; avoid height locks that trap scroll on mobile WebViews */
+    height: auto;
+    min-height: 100%;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     min-height: 100dvh;
     overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     /* Fallback when a CSS chunk fails to load (WebView / flaky network) */
     font-family:
       ui-sans-serif,
@@ -126,6 +131,11 @@
       Arial,
       sans-serif;
     font-feature-settings: "ss01", "ss02", "cv01", "cv02", "cv03";
+  }
+
+  /* Next.js app root: at least one viewport tall so short pages still paint full height */
+  #__next {
+    min-height: 100dvh;
   }
 }
 
