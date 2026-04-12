@@ -139,32 +139,34 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
     return s?.pickupPoint ? { studentName: s.name, query: q(s.pickupPoint) } : null;
   }, [filteredStudents, isActive, journeyType]);
 
-  const sendNotificationToGuardian = async (student: Student, action: 'pickup' | 'drop') => {
-    if (!student.guardianMobile || !student.guardianName) {
-      console.warn('Missing guardian contact information for notification');
+  const sendNotificationToGuardian = async (student: Student, action: "pickup" | "drop") => {
+    const hasMobile = Boolean((student.guardianMobile ?? "").trim());
+    const hasProfile = Boolean(student.guardian_profile_id);
+    if (!hasMobile && !hasProfile) {
+      console.warn("Missing guardian mobile and profile id — cannot notify for", student.name);
       return;
     }
 
     try {
-      const { sendStudentActionNotification } = await import('@/services/notificationService');
+      const { sendStudentActionNotification } = await import("@/services/notificationService");
 
       const time = new Date().toLocaleTimeString();
 
       await sendStudentActionNotification({
         student_name: student.name,
-        guardian_name: student.guardianName,
-        guardian_mobile: student.guardianMobile,
+        guardian_name: student.guardianName || "Parent",
+        guardian_mobile: hasMobile ? student.guardianMobile : undefined,
         guardian_profile_id: student.guardian_profile_id,
         action,
         time,
-        bus_number: driverInfo.busNumber || 'Unknown',
-        driver_name: driverInfo.driverName || 'Unknown',
-        pickup_point: student.pickupPoint || 'Unknown',
+        bus_number: driverInfo.busNumber || "Unknown",
+        driver_name: driverInfo.driverName || "Unknown",
+        pickup_point: student.pickupPoint || "Unknown",
       });
 
       console.log(`Notification sent to guardian for ${student.name} - ${action} at ${time}`);
     } catch (error) {
-      console.error('Failed to send notification to guardian:', error);
+      console.error("Failed to send notification to guardian:", error);
     }
   };
 
@@ -238,10 +240,13 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
       }
     }
 
-    if (willBoard && journeyType === 'pickup' && studentBefore.guardianMobile) {
-      await sendNotificationToGuardian(studentBefore, 'pickup');
-    } else if (!willBoard && journeyType === 'drop' && studentBefore.guardianMobile) {
-      await sendNotificationToGuardian(studentBefore, 'drop');
+    const canNotifyGuardian =
+      Boolean((studentBefore.guardianMobile ?? "").trim()) || Boolean(studentBefore.guardian_profile_id);
+
+    if (willBoard && journeyType === "pickup" && canNotifyGuardian) {
+      await sendNotificationToGuardian(studentBefore, "pickup");
+    } else if (!willBoard && journeyType === "drop" && canNotifyGuardian) {
+      await sendNotificationToGuardian(studentBefore, "drop");
     }
 
     const actionText =

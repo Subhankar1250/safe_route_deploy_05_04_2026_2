@@ -14,88 +14,123 @@ export interface WelcomeNotificationData {
 export interface StudentActionNotificationData {
   student_name: string;
   guardian_name: string;
-  guardian_mobile: string;
-  /** When set, also sends FCM via send-push-notification (web + profile token). */
+  /** SMS / WhatsApp; push + in-app still work when only guardian_profile_id is set. */
+  guardian_mobile?: string;
+  /** When set, sends FCM + Realtime + in-app center via send-push-notification. */
   guardian_profile_id?: string;
-  action: 'pickup' | 'drop';
+  action: "pickup" | "drop";
   time: string;
   bus_number: string;
   driver_name: string;
   pickup_point: string;
 }
 
+function digitsMobile(m: string | undefined): string {
+  return (m ?? "").replace(/\D/g, "");
+}
+
 export const sendStudentActionNotification = async (data: StudentActionNotificationData) => {
   try {
-    const actionText = data.action === 'pickup' ? 'picked up' : 'dropped at home';
-    const actionPast = data.action === 'pickup' ? 'Picked Up' : 'Dropped Home';
-    
-    const message = `🚌 *Student ${actionPast}*\n\nDear ${data.guardian_name}, your child ${data.student_name} has been ${actionText} by Bus #${data.bus_number} (Driver: ${data.driver_name}) at ${data.time}.\n\n${data.action === 'pickup' ? `📍 Pickup location: ${data.pickup_point}` : '✅ Home drop completed.'}\n\n- Sishu Tirtha Safe Route`;
+    const actionText = data.action === "pickup" ? "picked up" : "dropped at home";
+    const actionPast = data.action === "pickup" ? "Picked Up" : "Dropped Home";
+
+    const guardianLabel = (data.guardian_name || "Parent").trim();
+    const mobileDigits = digitsMobile(data.guardian_mobile);
+    const hasSmsChannel = mobileDigits.length >= 10;
+
+    const message = `🚌 *Student ${actionPast}*\n\nDear ${guardianLabel}, your child ${data.student_name} has been ${actionText} by Bus #${data.bus_number} (Driver: ${data.driver_name}) at ${data.time}.\n\n${data.action === "pickup" ? `📍 Pickup location: ${data.pickup_point}` : "✅ Home drop completed."}\n\n- Sishu Tirtha Safe Route`;
 
     const title = `Student ${actionPast}`;
     const shortBody = `${data.student_name} — Bus #${data.bus_number} · ${data.time}`;
 
-    const [whatsappResult, smsResult, pushResult] = await Promise.allSettled([
-      supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          mobileNumber: data.guardian_mobile,
-          message: { text: message },
-        },
-      }),
-      supabase.functions.invoke("send-student-action-sms", {
-        body: data,
-      }),
-      data.guardian_profile_id
-        ? supabase.functions.invoke("send-push-notification", {
-            body: {
-              userId: data.guardian_profile_id,
-              notification: {
-                title,
-                body: shortBody,
-                icon: "/bus-icon.svg",
-                badge: "/bus-icon.svg",
-                data: {
-                  url: "/guardian/dashboard",
-                  action: data.action,
-                  step: data.action === "pickup" ? "student_pickup" : "student_drop",
-                  student: data.student_name,
-                  bus: data.bus_number,
-                },
+    const whatsappPromise = hasSmsChannel
+      ? supabase.functions.invoke("send-whatsapp-message", {
+          body: {
+            mobileNumber: data.guardian_mobile,
+            message: { text: message },
+          },
+        })
+      : Promise.resolve({ data: null, error: null });
+
+    const smsPayload = hasSmsChannel
+      ? { ...data, guardian_mobile: data.guardian_mobile!, guardian_name: guardianLabel }
+      : null;
+    const smsPromise = smsPayload
+      ? supabase.functions.invoke("send-student-action-sms", {
+          body: smsPayload,
+        })
+      : Promise.resolve({ data: null, error: null });
+
+    const pushPromise = data.guardian_profile_id
+      ? supabase.functions.invoke("send-push-notification", {
+          body: {
+            userId: data.guardian_profile_id,
+            notification: {
+              title,
+              body: shortBody,
+              icon: "/bus-icon.svg",
+              badge: "/bus-icon.svg",
+              data: {
+                url: "/guardian/dashboard",
+                action: data.action,
+                step: data.action === "pickup" ? "student_pickup" : "student_drop",
+                student: data.student_name,
+                bus: data.bus_number,
               },
             },
-          })
-        : Promise.resolve({ data: null, error: null }),
+          },
+        })
+      : Promise.resolve({ data: null, error: null });
+
+    const [whatsappResult, smsResult, pushResult] = await Promise.allSettled([
+      whatsappPromise,
+      smsPromise,
+      pushPromise,
     ]);
 
-    // Log WhatsApp result
-    if (whatsappResult.status === 'fulfilled' && !whatsappResult.value.error) {
-      console.log(`Student ${data.action} WhatsApp message sent to guardian: ${data.guardian_name}`);
-    } else {
-      console.error('Failed to send student action WhatsApp message:', whatsappResult.status === 'fulfilled' ? whatsappResult.value.error : whatsappResult.reason);
-    }
+    if (hasSmsChannel) {
+      if (whatsappResult.status === "fulfilled" && !whatsappResult.value.error) {
+        console.log(`Student ${data.action} WhatsApp message sent to guardian: ${guardianLabel}`);
+      } else {
+        console.error(
+          "Failed to send student action WhatsApp message:",
+          whatsappResult.status === "fulfilled" ? whatsappResult.value.error : whatsappResult.reason,
+        );
+      }
 
-    // Log SMS result
-    if (smsResult.status === 'fulfilled' && !smsResult.value.error) {
-      console.log(`Student ${data.action} SMS sent to guardian: ${data.guardian_name}`);
+      if (smsResult.status === "fulfilled" && !smsResult.value.error) {
+        console.log(`Student ${data.action} SMS sent to guardian: ${guardianLabel}`);
+      } else {
+        console.error(
+          "Failed to send student action SMS:",
+          smsResult.status === "fulfilled" ? smsResult.value.error : smsResult.reason,
+        );
+      }
     } else {
-      console.error('Failed to send student action SMS:', smsResult.status === 'fulfilled' ? smsResult.value.error : smsResult.reason);
+      console.log(
+        `Student ${data.action}: skipping SMS/WhatsApp (no mobile on record); push/in-app use profile id only.`,
+      );
     }
 
     if (data.guardian_profile_id) {
-      if (pushResult.status === 'fulfilled' && !pushResult.value.error) {
+      if (pushResult.status === "fulfilled" && !pushResult.value.error) {
         console.log(`Student ${data.action} push sent to guardian profile ${data.guardian_profile_id}`);
-      } else if (pushResult.status === 'fulfilled' && pushResult.value.error) {
-        console.warn('Student action push failed:', pushResult.value.error);
-      } else if (pushResult.status === 'rejected') {
-        console.warn('Student action push failed:', pushResult.reason);
+      } else if (pushResult.status === "fulfilled" && pushResult.value.error) {
+        console.warn("Student action push failed:", pushResult.value.error);
+      } else if (pushResult.status === "rejected") {
+        console.warn("Student action push failed:", pushResult.reason);
       }
+    } else {
+      console.warn(
+        `Student ${data.action}: no guardian_profile_id — guardian will not receive app push/in-app for this event.`,
+      );
     }
 
-    // Log the notification in the database
     await logNotification({
-      user_type: 'guardian',
+      user_type: "guardian",
       title: `Student ${actionPast}`,
       body: message,
-      mobile_number: data.guardian_mobile
+      mobile_number: data.guardian_mobile,
     });
 
   } catch (error) {
