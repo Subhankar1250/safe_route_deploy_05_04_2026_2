@@ -68,6 +68,11 @@ async function sendFcmV1Single(
 ): Promise<unknown> {
   const data = stringData(n.data);
   const url = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+  const openLink =
+    typeof n.data?.url === "string" && String(n.data.url).trim()
+      ? String(n.data.url)
+      : "/guardian/dashboard";
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -82,6 +87,9 @@ async function sendFcmV1Single(
           body: n.body,
         },
         data,
+        android: {
+          priority: "HIGH",
+        },
         webpush: {
           notification: {
             title: n.title,
@@ -90,7 +98,7 @@ async function sendFcmV1Single(
             badge: n.badge || "/bus-icon.svg",
           },
           fcm_options: {
-            link: typeof n.data?.url === "string" ? (n.data.url as string) : "/guardian/dashboard",
+            link: openLink,
           },
         },
       },

@@ -6,17 +6,46 @@ export type GuardianNotificationType =
   | "leave_school"
   | "student_drop";
 
-export type GuardianNotificationPrefs = Record<GuardianNotificationType, boolean>;
+export type GuardianNotificationPrefs = {
+  student_pickup: boolean;
+  reach_school: boolean;
+  leave_school: boolean;
+  student_drop: boolean;
+  quiet_hours_enabled: boolean;
+  quiet_start_ist: string;
+  quiet_end_ist: string;
+};
 
 const DEFAULT_PREFS: GuardianNotificationPrefs = {
   student_pickup: true,
   reach_school: true,
   leave_school: true,
   student_drop: true,
+  quiet_hours_enabled: false,
+  quiet_start_ist: "22:00",
+  quiet_end_ist: "06:00",
 };
 
 function prefsKey(profileId: string): string {
   return `guardian_notification_prefs_${profileId}`;
+}
+
+function normalizePrefs(p: Partial<GuardianNotificationPrefs> | undefined): GuardianNotificationPrefs {
+  return {
+    student_pickup: p?.student_pickup !== false,
+    reach_school: p?.reach_school !== false,
+    leave_school: p?.leave_school !== false,
+    student_drop: p?.student_drop !== false,
+    quiet_hours_enabled: p?.quiet_hours_enabled === true,
+    quiet_start_ist:
+      typeof p?.quiet_start_ist === "string" && /^\d{1,2}:\d{2}$/.test(p.quiet_start_ist)
+        ? p.quiet_start_ist
+        : DEFAULT_PREFS.quiet_start_ist,
+    quiet_end_ist:
+      typeof p?.quiet_end_ist === "string" && /^\d{1,2}:\d{2}$/.test(p.quiet_end_ist)
+        ? p.quiet_end_ist
+        : DEFAULT_PREFS.quiet_end_ist,
+  };
 }
 
 export function readGuardianNotificationPrefs(profileId: string): GuardianNotificationPrefs {
@@ -25,12 +54,7 @@ export function readGuardianNotificationPrefs(profileId: string): GuardianNotifi
     const raw = localStorage.getItem(prefsKey(profileId));
     if (!raw) return DEFAULT_PREFS;
     const parsed = JSON.parse(raw) as Partial<GuardianNotificationPrefs>;
-    return {
-      student_pickup: parsed.student_pickup !== false,
-      reach_school: parsed.reach_school !== false,
-      leave_school: parsed.leave_school !== false,
-      student_drop: parsed.student_drop !== false,
-    };
+    return normalizePrefs(parsed);
   } catch {
     return DEFAULT_PREFS;
   }
@@ -40,7 +64,7 @@ export function writeGuardianNotificationPrefs(
   profileId: string,
   patch: Partial<GuardianNotificationPrefs>,
 ): GuardianNotificationPrefs {
-  const next = { ...readGuardianNotificationPrefs(profileId), ...patch };
+  const next = normalizePrefs({ ...readGuardianNotificationPrefs(profileId), ...patch });
   if (typeof window !== "undefined") {
     localStorage.setItem(prefsKey(profileId), JSON.stringify(next));
     window.dispatchEvent(new CustomEvent("guardian-notification-prefs-updated"));
@@ -59,13 +83,8 @@ export async function fetchGuardianNotificationPrefsFromServer(
       },
     });
     if (error) throw error;
-    const prefs = (data as { preferences?: Partial<GuardianNotificationPrefs> } | null)?.preferences ?? {};
-    const merged: GuardianNotificationPrefs = {
-      student_pickup: prefs.student_pickup !== false,
-      reach_school: prefs.reach_school !== false,
-      leave_school: prefs.leave_school !== false,
-      student_drop: prefs.student_drop !== false,
-    };
+    const prefs = (data as { preferences?: Partial<GuardianNotificationPrefs> } | null)?.preferences;
+    const merged = normalizePrefs(prefs);
     writeGuardianNotificationPrefs(profileId, merged);
     return merged;
   } catch {
@@ -87,13 +106,8 @@ export async function writeGuardianNotificationPrefsToServer(
       },
     });
     if (error) throw error;
-    const prefs = (data as { preferences?: Partial<GuardianNotificationPrefs> } | null)?.preferences ?? {};
-    return writeGuardianNotificationPrefs(profileId, {
-      student_pickup: prefs.student_pickup !== false,
-      reach_school: prefs.reach_school !== false,
-      leave_school: prefs.leave_school !== false,
-      student_drop: prefs.student_drop !== false,
-    });
+    const prefs = (data as { preferences?: Partial<GuardianNotificationPrefs> } | null)?.preferences;
+    return writeGuardianNotificationPrefs(profileId, normalizePrefs(prefs ?? optimistic));
   } catch {
     return optimistic;
   }
@@ -113,4 +127,3 @@ export function mapStepToNotificationType(step?: string): GuardianNotificationTy
       return null;
   }
 }
-

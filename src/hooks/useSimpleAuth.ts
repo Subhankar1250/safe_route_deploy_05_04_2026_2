@@ -163,6 +163,19 @@ export const useSimpleAuth = () => {
           throw new Error("Wrong mobile number or PIN. Try again or use Forgot PIN.");
         }
 
+        if (payload.error === "rate_limited") {
+          const lu = payload.locked_until;
+          let extra = "";
+          if (typeof lu === "string") {
+            const ms = Date.parse(lu);
+            if (Number.isFinite(ms)) {
+              const mins = Math.max(1, Math.ceil((ms - Date.now()) / 60000));
+              extra = ` Try again in about ${mins} minute(s).`;
+            }
+          }
+          throw new Error(`Too many incorrect PIN attempts.${extra}`);
+        }
+
         if (payload.error === "no_pin_set") {
           throw new Error(
             "Your account does not have a login PIN yet. Ask your school to issue one, or use the WhatsApp help below.",

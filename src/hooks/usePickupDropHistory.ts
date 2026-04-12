@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-interface PickupDropEvent {
+export interface PickupDropEvent {
   id: string;
   student_id: string;
   student_name: string;
   driver_name: string;
-  event_type: 'pickup' | 'drop';
+  event_type: "pickup" | "drop";
   event_time: string;
   location_lat?: number;
   location_lng?: number;
@@ -21,75 +21,101 @@ export const usePickupDropHistory = (guardianProfileId: string | null) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (!guardianProfileId) {
-      setLoading(false);
-      return;
-    }
+  const fetchHistory = useCallback(async () => {
+    if (!guardianProfileId) return;
+    try {
+      const { data, error } = await supabase.rpc("get_guardian_pickup_drop_history", {
+        guardian_profile_id: guardianProfileId,
+      });
 
-    const loadHistory = async () => {
-      try {
-        setLoading(true);
-        
-        const { data, error } = await supabase
-          .rpc('get_guardian_pickup_drop_history', { 
-            guardian_profile_id: guardianProfileId 
-          });
-
-        if (error) {
-          console.error('Error loading pickup drop history:', error);
-          toast({
-            title: "Error",
-            description: "Failed to load pickup/drop history",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        setHistory(data?.map(item => ({
-          ...item,
-          event_type: item.event_type as 'pickup' | 'drop'
-        })) || []);
-      } catch (error) {
-        console.error('Error loading pickup drop history:', error);
+      if (error) {
+        console.error("Error loading pickup drop history:", error);
         toast({
           title: "Error",
           description: "Failed to load pickup/drop history",
           variant: "destructive",
         });
-      } finally {
-        setLoading(false);
+        return;
       }
+
+      setHistory(
+        (data ?? []).map((item: Record<string, unknown>) => ({
+          ...item,
+          event_type: item.event_type as "pickup" | "drop",
+        })) as PickupDropEvent[],
+      );
+    } catch (error) {
+      console.error("Error loading pickup drop history:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load pickup/drop history",
+        variant: "destructive",
+      });
+    }
+  }, [guardianProfileId, toast]);
+
+  useEffect(() => {
+    if (!guardianProfileId) {
+      setHistory([]);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setLoading(true);
+      await fetchHistory();
+      if (!cancelled) setLoading(false);
     };
 
-    loadHistory();
+    void run();
 
-    // Set up real-time subscription for new pickup/drop events
+    return () => {
+      cancelled = true;
+    };
+  }, [guardianProfileId, fetchHistory]);
+
+  const studentIdsKey = useMemo(
+    () =>
+      [...new Set(history.map((h) => h.student_id))]
+        .filter(Boolean)
+        .sort()
+        .join(","),
+    [history],
+  );
+
+  useEffect(() => {
+    if (!guardianProfileId || !studentIdsKey) return;
+
+    const ids = studentIdsKey.split(",").filter(Boolean);
+    if (ids.length === 0) return;
+
+    const filter = `student_id=in.(${ids.join(",")})`;
+
     const channel = supabase
-      .channel('pickup_drop_history_changes')
+      .channel(`pickup_drop_guardian_${guardianProfileId}_${studentIdsKey.slice(0, 60)}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'pickup_drop_history',
-          filter: `student_id=in.(${history.map(h => h.student_id).join(',')})`
+          event: "INSERT",
+          schema: "public",
+          table: "pickup_drop_history",
+          filter,
         },
-        (payload) => {
-          console.log('New pickup/drop event:', payload);
-          // Reload history to get the complete data with joins
-          loadHistory();
-        }
+        () => {
+          void fetchHistory();
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [guardianProfileId, toast]);
+  }, [guardianProfileId, studentIdsKey, fetchHistory]);
 
   return {
     history,
-    loading
+    loading,
   };
 };

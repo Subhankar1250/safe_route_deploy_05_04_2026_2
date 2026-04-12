@@ -23,7 +23,7 @@ import { useGuardianStudents } from '@/hooks/useGuardianStudents';
 import { supabase } from '@/integrations/supabase/client';
 import LiveTrackingMap from './LiveTrackingMap';
 import PickupDropHistory from './PickupDropHistory';
-import ETADisplay from './ETADisplay';
+import ETADisplay, { type GuardianLiveRouteEta } from "./ETADisplay";
 import FloatingChatButton from '../chat/FloatingChatButton';
 import { HolidayNotification } from '@/components/ui/holiday-notification';
 import { SchoolServiceCalendarCard } from '@/components/ui/SchoolServiceCalendarCard';
@@ -41,9 +41,16 @@ import { registerGuardianWebPush } from '@/services/guardianPushService';
 import { Capacitor } from "@capacitor/core";
 import { locationPermissionHelpText } from "@/lib/nativeAndroidApp";
 import { useProximityAlarm } from "@/hooks/useProximityAlarm";
+import { useRoadDistanceBetween } from "@/hooks/useRoadDistanceBetween";
+import { calculateDistance, calculateEtaFromDistance, formatTravelTime } from "@/utils/locationUtils";
 import { markStudentAbsentToday } from "@/services/guardianAttendanceService";
 import { NotificationCenter } from "@/components/guardian/NotificationCenter";
+import { GuardianOnboardingChecklist } from "@/components/guardian/GuardianOnboardingChecklist";
 import { useAppLanguage } from "@/contexts/AppLanguageContext";
+import { trackEvent } from "@/lib/analytics";
+import { AppAiHelpAssistant } from "@/components/help/AppAiHelpAssistant";
+
+const MAX_REASONABLE_GUARDIAN_DISTANCE_KM = 100;
 
 const GuardianDashboard: React.FC = () => {
   const [guardianLocation, setGuardianLocation] = useState<{latitude: number, longitude: number} | null>(null);
@@ -57,27 +64,143 @@ const GuardianDashboard: React.FC = () => {
   const { students, driverLocation, loading, estimatedTime } = useGuardianStudents(correctProfileId || user?.id || null);
   const { announceBusArrival } = useVoiceAnnouncements();
   const lastAnnouncedEtaRef = useRef<string | null>(null);
+  const dashboardViewTrackedRef = useRef(false);
+  const mapViewTrackedRef = useRef(false);
 
   const student = students[0];
 
-  // 500m alarm: driver enters radius around guardian location
-  const proximity = useProximityAlarm({
-    enabled: !!student && !!guardianLocation && !!driverLocation?.is_active,
+  const guardianDriverRoadEnabled =
+    !!student &&
+    !!guardianLocation &&
+    !!driverLocation?.is_active &&
+    Number.isFinite(driverLocation.latitude) &&
+    Number.isFinite(driverLocation.longitude);
+
+  const guardianRoad = useRoadDistanceBetween(
+    guardianLocation ? { lat: guardianLocation.latitude, lng: guardianLocation.longitude } : null,
+    driverLocation && guardianDriverRoadEnabled
+      ? { lat: driverLocation.latitude, lng: driverLocation.longitude }
+      : null,
+    { enabled: guardianDriverRoadEnabled, debounceMs: 1400 },
+  );
+
+  const guardianLiveRouteEta = useMemo((): GuardianLiveRouteEta | null => {
+    if (!driverLocation || !guardianLocation || driverLocation.is_active === false) return null;
+    const tsMs = Date.parse(driverLocation.last_updated ?? "");
+    const fresh =
+      !driverLocation.last_updated ||
+      (Number.isFinite(tsMs) && Date.now() - tsMs <= 2 * 60 * 1000);
+    if (!fresh) return null;
+
+    const straightKm = calculateDistance(
+      driverLocation.latitude,
+      driverLocation.longitude,
+      guardianLocation.latitude,
+      guardianLocation.longitude,
+    );
+    if (!Number.isFinite(straightKm) || straightKm > MAX_REASONABLE_GUARDIAN_DISTANCE_KM) return null;
+
+    const speed = driverLocation.speed_kmh ?? 28;
+    const straightEta = calculateEtaFromDistance(straightKm, speed);
+
+    if (!guardianRoad.hasFirstEstimate) {
+      return {
+        pending: true,
+        distanceKm: straightEta.distanceKm,
+        durationMinutes: straightEta.durationMinutes,
+        estimatedArrivalTime: straightEta.label,
+        followsRoadNetwork: false,
+      };
+    }
+
+    const km = (guardianRoad.distanceMeters ?? 0) / 1000;
+    if (!Number.isFinite(km) || km > MAX_REASONABLE_GUARDIAN_DISTANCE_KM) return null;
+
+    if (km < 0.1) {
+      return {
+        pending: false,
+        distanceKm: km,
+        durationMinutes: 0,
+        estimatedArrivalTime: "Arrived",
+        followsRoadNetwork: guardianRoad.isRoad,
+      };
+    }
+
+    if (guardianRoad.isRoad && guardianRoad.durationSeconds != null) {
+      const minutes = Math.max(1, Math.round(guardianRoad.durationSeconds / 60));
+      return {
+        pending: guardianRoad.loading,
+        distanceKm: km,
+        durationMinutes: minutes,
+        estimatedArrivalTime: formatTravelTime(minutes),
+        followsRoadNetwork: true,
+      };
+    }
+
+    const eta = calculateEtaFromDistance(km, speed);
+    return {
+      pending: guardianRoad.loading,
+      distanceKm: eta.distanceKm,
+      durationMinutes: eta.durationMinutes,
+      estimatedArrivalTime: eta.label,
+      followsRoadNetwork: false,
+    };
+  }, [driverLocation, guardianLocation, guardianRoad]);
+
+  // 500m / 200m / 100m alarms — driving distance along roads when routing is available
+  useProximityAlarm({
+    enabled: guardianDriverRoadEnabled,
     guardianLocation,
     driverLocation: driverLocation
       ? { latitude: driverLocation.latitude, longitude: driverLocation.longitude }
       : null,
-    radiusMeters: 500,
-    cooldownMs: 5 * 60 * 1000,
-    onTriggered: () => {
+    drivingDistance: guardianDriverRoadEnabled
+      ? {
+          meters: guardianRoad.distanceMeters ?? 0,
+          ready: Boolean(guardianRoad.hasFirstEstimate && guardianRoad.distanceMeters != null),
+        }
+      : undefined,
+    onTriggered: ({ band }) => {
+      const descKey =
+        band === 500
+          ? "guardian.proximityMsg500"
+          : band === 200
+            ? "guardian.proximityMsg200"
+            : "guardian.proximityMsg100";
       toast({
         title: t("guardian.proximityTitle"),
-        description: t("guardian.proximityMsg"),
+        description: t(descKey),
       });
     },
   });
 
   const guardianProfileId = correctProfileId || user?.id || null;
+
+  useEffect(() => {
+    if (loading || dashboardViewTrackedRef.current) return;
+    if (!user || user.user_type !== "guardian") return;
+    dashboardViewTrackedRef.current = true;
+    trackEvent("guardian_dashboard_view", { has_student: Boolean(student) });
+  }, [loading, user, student]);
+
+  useEffect(() => {
+    if (loading || !student) return;
+    const node = document.getElementById("section-g-map");
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting && !mapViewTrackedRef.current) {
+            mapViewTrackedRef.current = true;
+            trackEvent("guardian_map_view");
+          }
+        }
+      },
+      { threshold: 0.12 },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [loading, student?.student_id]);
 
   const toggleAbsent = async () => {
     if (!guardianProfileId || !student?.student_id) return;
@@ -321,6 +444,12 @@ const GuardianDashboard: React.FC = () => {
       >
         <MobileDashboardFeatureNav items={guardianNavItems} title="Jump to" />
 
+        <div className="flex justify-end">
+          <AppAiHelpAssistant contextLabel="Guardian" />
+        </div>
+
+        {student ? <GuardianOnboardingChecklist hasLocation={!!guardianLocation} /> : null}
+
         <section
           id="section-g-notices"
           className="scroll-mt-28 space-y-4 sm:space-y-5"
@@ -534,6 +663,7 @@ const GuardianDashboard: React.FC = () => {
                 last_updated: driverLocation.last_updated,
               } : null}
               guardianLocation={guardianLocation}
+              guardianLiveRouteEta={guardianLiveRouteEta}
             />
             </section>
 

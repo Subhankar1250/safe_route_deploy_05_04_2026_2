@@ -1,9 +1,15 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import AdminDashboardStats from "./AdminDashboardStats";
 import { AdminTodaySnapshot } from "./AdminTodaySnapshot";
 import { AdminDriverStatusFeed } from "./AdminDriverStatusFeed";
 import { AdminQuickActions } from "./AdminQuickActions";
 import { AdminUpcomingHolidays } from "./AdminUpcomingHolidays";
+import { AppAiHelpAssistant } from "@/components/help/AppAiHelpAssistant";
+import { AdminOperationalAlerts } from "./AdminOperationalAlerts";
+import { AdminBusLocationHealth } from "./AdminBusLocationHealth";
+import { AdminGuardianNotificationRetention } from "./AdminGuardianNotificationRetention";
 
 const AdminOverview: React.FC = () => {
   const [dashboardData, setDashboardData] = useState({
@@ -48,8 +54,14 @@ const AdminOverview: React.FC = () => {
 
   return (
     <div className="space-y-10">
+      <div className="flex justify-end">
+        <AppAiHelpAssistant contextLabel="Admin" />
+      </div>
       <AdminDashboardStats dashboardData={dashboardData} />
       <AdminTodaySnapshot />
+      <AdminOperationalAlerts />
+      <AdminBusLocationHealth />
+      <AdminGuardianNotificationRetention />
       <AdminDriverStatusFeed />
       <AdminQuickActions />
       <AdminUpcomingHolidays />

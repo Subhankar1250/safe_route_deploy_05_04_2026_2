@@ -24,6 +24,14 @@ const EN: Dict = {
   "guardian.driverWillSeePresent": "Driver will see this student as present today.",
   "guardian.proximityTitle": "Alert",
   "guardian.proximityMsg": "ড্রাইভার ৫০০ মিটারের মধ্যে চলে এসেছে, আপনি বাচ্চাকে নিয়ে প্রস্তুত থাকুন।",
+  "guardian.proximityMsg500":
+    "Driver is within 500 m — get your child ready. (ড্রাইভার ৫০০ মিটারের মধ্যে, প্রস্তুত থাকুন।)",
+  "guardian.proximityMsg200":
+    "Driver is within 200 m — please be at the pickup point. (ড্রাইভার ২০০ মিটারের মধ্যে।)",
+  "guardian.proximityMsg100":
+    "Driver is within 100 m — bus is very close. (ড্রাইভার ১০০ মিটারের মধ্যে।)",
+  "guardian.loginRemember": "Remember mobile & PIN on this device",
+  "guardian.loginClearSaved": "Clear saved login",
   "driver.startTrip": "Start Trip",
   "driver.endTrip": "End Trip",
   "driver.pickup": "Pick Up",
@@ -61,8 +69,26 @@ const EN: Dict = {
   "guardian.notif.reachSchool": "Reached school",
   "guardian.notif.leaveSchool": "Left school for home",
   "guardian.notif.studentDrop": "Dropped at home",
+  "guardian.quietHoursTitle": "Quiet hours (India time)",
+  "guardian.quietHoursHint":
+    "During this window we will not send push alerts (in-app and realtime still work). Use 24h times, e.g. 22:00–06:00.",
+  "guardian.quietHoursEnable": "Enable quiet hours",
+  "guardian.quietFrom": "From",
+  "guardian.quietTo": "To",
+  "guardian.testPushButton": "Send test push",
+  "guardian.testPushOkTitle": "Test sent",
+  "guardian.testPushFailTitle": "Test failed",
+  "guardian.onboardingTitle": "Get started",
+  "guardian.onboardingHint": "A quick checklist so you do not miss bus updates.",
+  "guardian.onboardingStepNotif": "Review notification types and quiet hours below.",
+  "guardian.onboardingStepLocation": "Allow location for distance alerts and ETA.",
+  "guardian.onboardingStepMap": "Open the live map when the bus is running.",
+  "guardian.onboardingGo": "Go",
+  "guardian.onboardingDismiss": "Dismiss checklist",
   "guardian.etaStaleBadge": "Last live update is stale",
   "guardian.etaStaleHint": "Driver location is old. ETA will appear after fresh live tracking resumes.",
+  "guardian.etaAlongRoads": "Distance & time follow roads (not straight line).",
+  "guardian.etaRouteUpdating": "Updating driving route…",
   "guardian.nav.notices": "Notices",
   "guardian.nav.child": "Child",
   "guardian.nav.driver": "Driver & bus",
@@ -80,6 +106,7 @@ const EN: Dict = {
   "driver.nav.trips": "Trips & journey",
   "driver.nav.safety": "Safety & alerts",
   "driver.nav.students": "Students",
+  "driver.openNextInMaps": "Next stop in Maps",
 };
 
 const BN: Dict = {
@@ -100,6 +127,14 @@ const BN: Dict = {
   "guardian.driverWillSeePresent": "ড্রাইভার আজ এই শিক্ষার্থীকে উপস্থিত হিসেবে দেখবে।",
   "guardian.proximityTitle": "সতর্কতা",
   "guardian.proximityMsg": "ড্রাইভার ৫০০ মিটারের মধ্যে চলে এসেছে, আপনি বাচ্চাকে নিয়ে প্রস্তুত থাকুন।",
+  "guardian.proximityMsg500":
+    "ড্রাইভার ৫০০ মিটারের মধ্যে চলে এসেছে, আপনি বাচ্চাকে নিয়ে প্রস্তুত থাকুন।",
+  "guardian.proximityMsg200":
+    "ড্রাইভার ২০০ মিটারের মধ্যে চলে এসেছে, পিকআপ স্থানে থাকুন।",
+  "guardian.proximityMsg100":
+    "ড্রাইভার ১০০ মিটারের মধ্যে — বাস খুব কাছে।",
+  "guardian.loginRemember": "এই ডিভাইসে মোবাইল ও PIN মনে রাখুন",
+  "guardian.loginClearSaved": "সংরক্ষিত লগইন মুছুন",
   "driver.startTrip": "ট্রিপ শুরু",
   "driver.endTrip": "ট্রিপ শেষ",
   "driver.pickup": "পিক আপ",
@@ -137,8 +172,26 @@ const BN: Dict = {
   "guardian.notif.reachSchool": "স্কুলে পৌঁছেছে",
   "guardian.notif.leaveSchool": "স্কুল থেকে বাড়ির পথে রওনা হয়েছে",
   "guardian.notif.studentDrop": "বাড়িতে নামানো হয়েছে",
+  "guardian.quietHoursTitle": "নীরব সময় (ভারতীয় সময়)",
+  "guardian.quietHoursHint":
+    "এই সময়ে পুশ সতর্কতা পাঠানো হবে না (ইন-অ্যাপ ও রিয়েলটাইম চালু থাকতে পারে)। ২৪ ঘণ্টার ফরম্যাট, যেমন ২২:০০–০৬:০০।",
+  "guardian.quietHoursEnable": "নীরব সময় চালু করুন",
+  "guardian.quietFrom": "থেকে",
+  "guardian.quietTo": "পর্যন্ত",
+  "guardian.testPushButton": "পরীক্ষামূলক পুশ পাঠান",
+  "guardian.testPushOkTitle": "পাঠানো হয়েছে",
+  "guardian.testPushFailTitle": "ব্যর্থ",
+  "guardian.onboardingTitle": "শুরু করুন",
+  "guardian.onboardingHint": "বাস আপডেট মিস না করার জন্য সংক্ষিপ্ত তালিকা।",
+  "guardian.onboardingStepNotif": "নিচে নোটিফিকেশন ধরন ও নীরব সময় দেখুন।",
+  "guardian.onboardingStepLocation": "দূরত্ব সতর্কতা ও ETA এর জন্য লোকেশন অনুমতি দিন।",
+  "guardian.onboardingStepMap": "বাস চলাকালীন লাইভ ম্যাপ খুলুন।",
+  "guardian.onboardingGo": "যান",
+  "guardian.onboardingDismiss": "তালিকা বন্ধ করুন",
   "guardian.etaStaleBadge": "শেষ লাইভ আপডেটটি পুরনো",
   "guardian.etaStaleHint": "ড্রাইভারের লোকেশন পুরনো। নতুন লাইভ ট্র্যাকিং শুরু হলে ETA দেখাবে।",
+  "guardian.etaAlongRoads": "দূরত্ব ও সময় রাস্তার পথ অনুযায়ী (সরল রেখা নয়)।",
+  "guardian.etaRouteUpdating": "ড্রাইভিং রুট আপডেট হচ্ছে…",
   "guardian.nav.notices": "নোটিস",
   "guardian.nav.child": "শিক্ষার্থী",
   "guardian.nav.driver": "ড্রাইভার ও বাস",
@@ -156,6 +209,7 @@ const BN: Dict = {
   "driver.nav.trips": "ট্রিপ ও জার্নি",
   "driver.nav.safety": "নিরাপত্তা ও সতর্কতা",
   "driver.nav.students": "শিক্ষার্থী",
+  "driver.openNextInMaps": "পরবর্তী স্টপ ম্যাপে",
 };
 
 type Ctx = {

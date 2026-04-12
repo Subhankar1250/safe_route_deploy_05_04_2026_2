@@ -3,7 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
-import { sendGuardianWhatsAppByProfileIds } from "../_shared/whatsappWebhook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -153,17 +152,6 @@ serve(async (req) => {
       });
     }
 
-    const wa =
-      guardianProfileIds.length > 0
-        ? await sendGuardianWhatsAppByProfileIds(
-            supabaseClient,
-            guardianProfileIds,
-            `${title}\n${body}`,
-            step,
-            "send-bulk-notification",
-          )
-        : { attempted: 0, sent: 0, failed: 0, errors: [] };
-
     const { error: logError } = await supabaseClient.from("notification_logs").insert({
       title: `BULK: ${title}`,
       body,
@@ -173,7 +161,6 @@ serve(async (req) => {
         mode: fcm?.mode ?? null,
         total_tokens: tokens.length,
         profile_count: profileIds.length,
-        whatsapp: wa,
         realtime_broadcast_ok: rtOk,
         realtime_broadcast_fail: rtFail,
         batches: fcm?.results.length ?? 0,

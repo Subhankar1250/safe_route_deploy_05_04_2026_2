@@ -3,8 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfiles, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
+import { filterOutQuietHoursGuardians } from "../_shared/guardianNotificationQuiet.ts";
 import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
-import { sendGuardianWhatsAppByProfileIds } from "../_shared/whatsappWebhook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,13 +67,20 @@ serve(async (req) => {
       );
     }
 
+    const siteBase =
+      (Deno.env.get("PUBLIC_SITE_URL") ?? Deno.env.get("NEXT_PUBLIC_SITE_URL") ?? "").replace(
+        /\/$/,
+        "",
+      ) || "";
+    const openUrl = siteBase ? `${siteBase}/guardian/dashboard` : "/guardian/dashboard";
+
     const broadcastPayload: AppBroadcastPayload = {
       title,
       body,
       step: step ?? "trip_update",
       data: {
         ...data,
-        url: "/guardian/dashboard",
+        url: openUrl,
         step: step ?? "trip_update",
       },
     };
@@ -84,8 +91,14 @@ serve(async (req) => {
       "notification",
     );
 
+    const skipQuiet =
+      data?.skip_quiet_hours === true || String(data?.skip_quiet_hours ?? "") === "true";
+    const fcmGuardianIds = await filterOutQuietHoursGuardians(supabase, guardianIds, {
+      skipQuiet,
+    });
+
     const tokenSet = new Set<string>();
-    for (const gid of guardianIds) {
+    for (const gid of fcmGuardianIds) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("fcm_token")
@@ -112,7 +125,7 @@ serve(async (req) => {
       data: {
         ...data,
         step: step ?? "trip_update",
-        url: "/guardian/dashboard",
+        url: openUrl,
       },
     };
 
@@ -131,15 +144,6 @@ serve(async (req) => {
       },
     });
 
-    const waMessage = `${title}\n${body}`;
-    const wa = await sendGuardianWhatsAppByProfileIds(
-      supabase,
-      guardianIds,
-      waMessage,
-      step ?? "trip_update",
-      "notify-driver-guardians",
-    );
-
     await supabase.from("notification_logs").insert({
       user_type: "guardian",
       title: `DRIVER_BROADCAST: ${title}`,
@@ -151,7 +155,6 @@ serve(async (req) => {
         driver_id,
         step,
         guardian_count: guardianIds.length,
-        whatsapp: wa,
         fcm_tokens: tokens.length,
         fcm: fcm
           ? { mode: fcm.mode, error_count: fcm.errors.length, results: fcm.results }

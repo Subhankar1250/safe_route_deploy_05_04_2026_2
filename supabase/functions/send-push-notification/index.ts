@@ -3,8 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { sendFcmToTokensIfConfigured, type FcmNotification } from "../_shared/fcmSend.ts";
 import { broadcastToProfile, type AppBroadcastPayload } from "../_shared/realtimeBroadcast.ts";
 import { filterGuardianIdsByPreference } from "../_shared/guardianNotificationPrefs.ts";
+import { filterOutQuietHoursGuardians } from "../_shared/guardianNotificationQuiet.ts";
 import { storeGuardianNotifications } from "../_shared/guardianNotificationsStore.ts";
-import { sendGuardianWhatsAppByProfileIds } from "../_shared/whatsappWebhook.ts";
 
 type Supabase = ReturnType<typeof createClient>;
 
@@ -18,66 +18,6 @@ interface NotificationPayload {
   userId?: string;
   userType?: string;
   notification: FcmNotification;
-}
-
-async function collectTokensForUserId(
-  supabase: Supabase,
-  userId: string,
-): Promise<string[]> {
-  const out = new Set<string>();
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("fcm_token")
-    .eq("id", userId)
-    .single();
-
-  if (error) throw error;
-  if (profile?.fcm_token) out.add(profile.fcm_token);
-
-  const { data: gptRows } = await supabase
-    .from("guardian_push_tokens")
-    .select("token")
-    .eq("profile_id", userId);
-
-  for (const row of gptRows || []) {
-    if (row?.token) out.add(row.token);
-  }
-
-  return [...out];
-}
-
-async function collectTokensForUserType(
-  supabase: Supabase,
-  userType: string,
-): Promise<string[]> {
-  const { data: profiles, error } = await supabase
-    .from("profiles")
-    .select("id, fcm_token")
-    .eq("user_type", userType);
-
-  if (error) throw error;
-
-  const out = new Set<string>();
-  const ids: string[] = [];
-
-  for (const p of profiles || []) {
-    ids.push(p.id);
-    if (p.fcm_token) out.add(p.fcm_token);
-  }
-
-  if (ids.length === 0) return [];
-
-  const { data: gpts } = await supabase
-    .from("guardian_push_tokens")
-    .select("token")
-    .in("profile_id", ids);
-
-  for (const g of gpts || []) {
-    if (g.token) out.add(g.token);
-  }
-
-  return [...out];
 }
 
 async function collectProfileIdsForUserType(
@@ -147,14 +87,11 @@ serve(async (req) => {
       );
     }
 
-    let tokens: string[] = [];
     let broadcastProfileIds: string[] = [];
 
     if (userId) {
-      tokens = await collectTokensForUserId(supabaseClient, userId);
       broadcastProfileIds = [userId];
     } else if (userType) {
-      tokens = await collectTokensForUserType(supabaseClient, userType);
       broadcastProfileIds = await collectProfileIdsForUserType(
         supabaseClient,
         userType,
@@ -165,7 +102,6 @@ serve(async (req) => {
     if (userId && step) {
       const filteredIds = await filterGuardianIdsByPreference(supabaseClient, [userId], step);
       if (filteredIds.length === 0) {
-        tokens = [];
         broadcastProfileIds = [];
       }
     } else if (userType === "guardian" && step) {
@@ -174,8 +110,17 @@ serve(async (req) => {
         broadcastProfileIds,
         step,
       );
-      tokens = await collectTokensForProfileIds(supabaseClient, broadcastProfileIds);
     }
+
+    const skipQuiet =
+      notification?.data?.skip_quiet_hours === true ||
+      String(notification?.data?.skip_quiet_hours ?? "") === "true";
+    const fcmProfileIds = await filterOutQuietHoursGuardians(
+      supabaseClient,
+      broadcastProfileIds,
+      { skipQuiet },
+    );
+    const tokens = await collectTokensForProfileIds(supabaseClient, fcmProfileIds);
 
     const n = notification;
     const rtPayload: AppBroadcastPayload = {
@@ -213,17 +158,6 @@ serve(async (req) => {
       });
     }
 
-    const wa =
-      broadcastProfileIds.length > 0
-        ? await sendGuardianWhatsAppByProfileIds(
-            supabaseClient,
-            broadcastProfileIds,
-            `${notification.title}\n${notification.body}`,
-            step ?? "direct_notification",
-            "send-push-notification",
-          )
-        : { attempted: 0, sent: 0, failed: 0, errors: [] };
-
     if (!fcm && tokens.length === 0 && broadcastProfileIds.length === 0) {
       return new Response(
         JSON.stringify({
@@ -244,7 +178,6 @@ serve(async (req) => {
           realtime_only: true,
           realtime_broadcast_ok: rtOk,
           realtime_broadcast_fail: rtFail,
-          whatsapp: wa,
         },
       });
 
@@ -270,7 +203,6 @@ serve(async (req) => {
           error: "FCM not configured",
           realtime_broadcast_ok: rtOk,
           realtime_broadcast_fail: rtFail,
-          whatsapp: wa,
         },
       });
 
@@ -295,7 +227,6 @@ serve(async (req) => {
         mode: fcm?.mode,
         realtime_broadcast_ok: rtOk,
         realtime_broadcast_fail: rtFail,
-        whatsapp: wa,
         results: fcm?.results,
         errors: fcm?.errors,
       },

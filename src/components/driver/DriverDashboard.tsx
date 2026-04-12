@@ -36,10 +36,12 @@ import FloatingChatButton from '../chat/FloatingChatButton';
 import { HolidayNotification } from '@/components/ui/holiday-notification';
 import { SchoolServiceCalendarCard } from '@/components/ui/SchoolServiceCalendarCard';
 import { DriverQuickStatus } from '@/components/driver/DriverQuickStatus';
+import { DriverDelayToParents } from "@/components/driver/DriverDelayToParents";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { isSecureBrowserContext, insecureContextHelpMessage } from "@/utils/browserFeatures";
 import { locationPermissionHelpText } from "@/lib/nativeAndroidApp";
 import { useAppLanguage } from "@/contexts/AppLanguageContext";
+import { AppAiHelpAssistant } from "@/components/help/AppAiHelpAssistant";
 
 /** Default map center (Hooghly area) when GPS is denied or unavailable */
 const DEFAULT_DRIVER_MAP_CENTER = { lat: 22.783014, lng: 87.773584 };
@@ -366,6 +368,10 @@ const DriverDashboard: React.FC = () => {
 
         <MobileDashboardFeatureNav items={driverNavItems} title="Jump to" />
 
+        <div className="flex justify-end">
+          <AppAiHelpAssistant contextLabel="Driver" />
+        </div>
+
         <section
           id="section-dash-notices"
           className="scroll-mt-28 space-y-4 sm:space-y-5"
@@ -377,6 +383,12 @@ const DriverDashboard: React.FC = () => {
 
         <section id="section-dash-quick" className="scroll-mt-28" aria-label="Quick status to admin">
           {user?.id ? <DriverQuickStatus driverProfileId={user.id} /> : null}
+          <DriverDelayToParents
+            driverId={driverData.id}
+            driverName={driverData.name}
+            busNumber={driverData.bus_number}
+            tripActive={tripActive}
+          />
         </section>
 
         {/* Driver Info Cards */}

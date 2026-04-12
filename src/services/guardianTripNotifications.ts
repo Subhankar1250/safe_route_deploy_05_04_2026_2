@@ -8,7 +8,9 @@ export type TripPushStep =
   | "drop_journey_ended"
   | "trip_ended"
   | "student_pickup"
-  | "student_drop";
+  | "student_drop"
+  /** Driver tap: running late — reaches all guardians on this bus (not filtered by trip prefs). */
+  | "driver_delay_notice";
 
 /**
  * Notify all guardians whose children are assigned to this driver (FCM via Edge Function).

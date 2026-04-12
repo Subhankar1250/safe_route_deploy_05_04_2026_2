@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import { RouteAwareAnalytics } from "@/components/analytics/RouteAwareAnalytics";
 import { AppProvidersLazy } from "@/components/providers/AppProvidersLazy";
 import "./globals.css";
@@ -69,6 +70,7 @@ export default function RootLayout({
           }}
         />
         <AppProvidersLazy>{children}</AppProvidersLazy>
+        <Analytics />
         <RouteAwareAnalytics />
         {process.env.NEXT_PUBLIC_HOTJAR_ID && process.env.NEXT_PUBLIC_HOTJAR_SV ? (
           <Script id="hotjar" strategy="afterInteractive">

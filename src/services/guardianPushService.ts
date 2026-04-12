@@ -81,3 +81,32 @@ export async function registerGuardianWebPush(profileId: string): Promise<boolea
     return false;
   }
 }
+
+/** Sends a test FCM to this guardian (skips quiet hours). Requires FCM configured on project. */
+export async function sendGuardianTestPush(profileId: string): Promise<{ ok: boolean; message: string }> {
+  if (!profileId) return { ok: false, message: "Not signed in" };
+  try {
+    const { data, error } = await supabase.functions.invoke("send-push-notification", {
+      body: {
+        userId: profileId,
+        notification: {
+          title: "Safe Route — test notification",
+          body: "If you see this, push is working. You can dismiss this message.",
+          data: {
+            url: "/guardian/dashboard",
+            skip_quiet_hours: true,
+          },
+        },
+      },
+    });
+    if (error) throw error;
+    const err = (data as { error?: string } | null)?.error;
+    if (err) return { ok: false, message: err };
+    return { ok: true, message: "Test sent. Check your device notification tray." };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Could not send test push",
+    };
+  }
+}

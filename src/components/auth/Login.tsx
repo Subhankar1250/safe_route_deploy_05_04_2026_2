@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import GuardianLoginTab from "./GuardianLoginTab";
 import DriverLoginTab from "./DriverLoginTab";
 import LoginHeader from "./LoginHeader";
 import LoginFooter from "./LoginFooter";
+import { AppAiHelpAssistant } from "@/components/help/AppAiHelpAssistant";
 import { LoginSupportWhatsApp } from "./LoginSupportWhatsApp";
 import { SimpleThemeToggle } from "@/components/ui/theme-toggle";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,6 +17,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSimpleAuth } from "@/hooks/useSimpleAuth";
 import { shouldHideAdminLoginLink } from "@/lib/nativeAndroidApp";
 import { trackEvent } from "@/lib/analytics";
+import {
+  clearGuardianSavedCredentials,
+  readGuardianSavedCredentials,
+  writeGuardianSavedCredentials,
+} from "@/services/guardianSavedCredentials";
 
 /** Inline fallbacks only — do NOT set `overflow: hidden` here: it overrides Tailwind `overflow-y-auto`
  *  and traps tall mobile layouts so Login / Forgot PIN sit below the fold with no scroll. */
@@ -41,6 +47,8 @@ const Login: React.FC = () => {
   const { loginWithPortalPin, loginWithDriverQr } = useSimpleAuth();
   const [mobileNumber, setMobileNumber] = useState("");
   const [pin, setPin] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const credentialsHydratedRef = useRef(false);
   const [role, setRole] = useState<"guardian" | "driver">("guardian");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +56,19 @@ const Login: React.FC = () => {
 
   useLayoutEffect(() => {
     setHideAdminLink(shouldHideAdminLoginLink());
+  }, []);
+
+  useEffect(() => {
+    if (credentialsHydratedRef.current) return;
+    credentialsHydratedRef.current = true;
+    void (async () => {
+      const saved = await readGuardianSavedCredentials();
+      if (saved) {
+        setMobileNumber(saved.mobile);
+        setPin(saved.pin);
+        setRememberMe(true);
+      }
+    })();
   }, []);
 
   /** Dynamic driver link: `/login?driver_id=<uuid>&token=<qr_token>` — same verification as QR scan. */
@@ -99,6 +120,10 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       await loginWithPortalPin(mobileNumber, pin, role);
+      if (role === "guardian") {
+        if (rememberMe) await writeGuardianSavedCredentials(mobileNumber, pin);
+        else await clearGuardianSavedCredentials();
+      }
       trackEvent("login_success", { role });
       if (role === "driver") router.push("/driver/dashboard");
       else router.push("/guardian/dashboard");
@@ -211,6 +236,14 @@ const Login: React.FC = () => {
                 setMobileNumber={setMobileNumber}
                 pin={pin}
                 setPin={setPin}
+                rememberMe={rememberMe}
+                setRememberMe={setRememberMe}
+                onClearSavedLogin={() => {
+                  void clearGuardianSavedCredentials();
+                  setMobileNumber("");
+                  setPin("");
+                  setRememberMe(false);
+                }}
                 handleLogin={handleLogin}
                 error={error}
                 loading={loading}
@@ -249,6 +282,12 @@ const Login: React.FC = () => {
             Driver or guardian sign-in only in this app.
           </p>
         )}
+
+        <div className="mx-auto flex w-full max-w-[28rem] justify-center">
+          <div className="rounded-2xl border border-white/25 bg-white/10 p-1 shadow-md backdrop-blur-md [&_button]:border-white/30 [&_button]:bg-white/15 [&_button]:text-white [&_button]:hover:bg-white/25">
+            <AppAiHelpAssistant contextLabel="Login" />
+          </div>
+        </div>
 
         <LoginFooter />
       </div>

@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { calculateDistance, calculateEtaFromDistance } from '@/utils/locationUtils';
+import {
+  calculateDistance,
+  calculateEtaFromDistance,
+  formatTravelTime,
+} from '@/utils/locationUtils';
+import { fetchDrivingRouteMeters } from '@/services/roadDrivingRoute';
 
 interface StudentWithDriver {
   student_id: string;
@@ -110,23 +115,40 @@ export const useGuardianStudents = (profileId: string | null) => {
           location.longitude != null &&
           location.is_active
         ) {
-          const distance = calculateDistance(
-            location.latitude,
-            location.longitude,
-            Number(student.pickup_location_lat),
-            Number(student.pickup_location_lng),
-          );
-
           const roadKmh =
             location.speed_kmh != null && location.speed_kmh >= 8 && location.speed_kmh <= 90
               ? location.speed_kmh
               : 28;
-          const eta = calculateEtaFromDistance(distance, roadKmh);
 
-          if (distance < 0.1) {
-            setEstimatedTime('Arrived');
+          const route = await fetchDrivingRouteMeters(
+            { lat: location.latitude, lng: location.longitude },
+            {
+              lat: Number(student.pickup_location_lat),
+              lng: Number(student.pickup_location_lng),
+            },
+          );
+
+          if (route) {
+            const distanceKm = route.distanceMeters / 1000;
+            if (distanceKm < 0.1) {
+              setEstimatedTime('Arrived');
+            } else {
+              const minutes = Math.max(1, Math.round(route.durationSeconds / 60));
+              setEstimatedTime(formatTravelTime(minutes));
+            }
           } else {
-            setEstimatedTime(eta.label === "—" ? null : eta.label);
+            const distance = calculateDistance(
+              location.latitude,
+              location.longitude,
+              Number(student.pickup_location_lat),
+              Number(student.pickup_location_lng),
+            );
+            const eta = calculateEtaFromDistance(distance, roadKmh);
+            if (distance < 0.1) {
+              setEstimatedTime('Arrived');
+            } else {
+              setEstimatedTime(eta.label === "—" ? null : eta.label);
+            }
           }
         } else {
           setEstimatedTime(null);

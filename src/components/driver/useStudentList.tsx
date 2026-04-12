@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Student } from './types';
 import { supabase } from '@/integrations/supabase/client';
@@ -125,6 +125,19 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
       student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.grade.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
+  const nextMapsTarget = useMemo(() => {
+    if (!isActive || journeyType === "none") return null;
+    const q = (s: string | undefined) => (s ?? "").trim();
+    if (journeyType === "pickup") {
+      const s = filteredStudents.find(
+        (x) => !x.isOnBoard && !x.isAbsentToday && q(x.pickupPoint),
+      );
+      return s?.pickupPoint ? { studentName: s.name, query: q(s.pickupPoint) } : null;
+    }
+    const s = filteredStudents.find((x) => x.isOnBoard && q(x.pickupPoint));
+    return s?.pickupPoint ? { studentName: s.name, query: q(s.pickupPoint) } : null;
+  }, [filteredStudents, isActive, journeyType]);
 
   const sendNotificationToGuardian = async (student: Student, action: 'pickup' | 'drop') => {
     if (!student.guardianMobile || !student.guardianName) {
@@ -276,5 +289,6 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
     filteredStudents,
     handleCheckInOut,
     loading,
+    nextMapsTarget,
   };
 };

@@ -8,6 +8,17 @@ import { useToast } from '@/hooks/use-toast';
 import { calculateDistance, calculateEtaFromDistance } from '@/utils/locationUtils';
 import { useAppLanguage } from "@/contexts/AppLanguageContext";
 
+/** Precomputed driver → guardian using driving distance (OSRM). When set, replaces straight-line live ETA. */
+export type GuardianLiveRouteEta = {
+  distanceKm: number;
+  durationMinutes: number;
+  estimatedArrivalTime: string;
+  /** True when distance/time came from the road-routing API. */
+  followsRoadNetwork: boolean;
+  /** Route request in progress; numbers may be straight-line until this is false. */
+  pending: boolean;
+};
+
 interface ETADisplayProps {
   studentIds: string[];
   studentName?: string;
@@ -20,6 +31,7 @@ interface ETADisplayProps {
     last_updated?: string;
   } | null;
   guardianLocation?: { latitude: number; longitude: number } | null;
+  guardianLiveRouteEta?: GuardianLiveRouteEta | null;
 }
 
 const MAX_DRIVER_LOCATION_AGE_MS = 2 * 60 * 1000;
@@ -31,6 +43,7 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
   busNumber,
   driverLocation,
   guardianLocation,
+  guardianLiveRouteEta,
 }) => {
   const [etas, setEtas] = useState<Map<string, ETACalculation>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +90,16 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
     stableStudentIds.length > 0 ? etas.get(stableStudentIds[0]) : null;
 
   const liveGuardianEta = useMemo(() => {
+    if (guardianLiveRouteEta) {
+      const g = guardianLiveRouteEta;
+      return {
+        estimatedArrivalTime: g.estimatedArrivalTime,
+        distanceKm: g.distanceKm,
+        durationMinutes: g.estimatedArrivalTime === "Arrived" ? 0 : g.durationMinutes,
+        followsRoadNetwork: g.followsRoadNetwork,
+        pending: g.pending,
+      };
+    }
     if (!driverLocation || !guardianLocation) return null;
     if (driverLocation.is_active === false) return null;
     if (driverLocation.last_updated) {
@@ -96,8 +119,10 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
       estimatedArrivalTime: eta.label,
       distanceKm: eta.distanceKm,
       durationMinutes: eta.label === "Arrived" ? 0 : eta.durationMinutes,
+      followsRoadNetwork: false,
+      pending: false,
     };
-  }, [driverLocation, guardianLocation]);
+  }, [driverLocation, guardianLocation, guardianLiveRouteEta]);
 
   const isDriverLocationStale = useMemo(() => {
     if (!driverLocation?.last_updated) return false;
@@ -164,6 +189,14 @@ const ETADisplay: React.FC<ETADisplayProps> = ({
                 <span className="text-sm text-muted-foreground">
                   {liveGuardianEta ? "Driver → Your live location" : (studentName || "Your child's bus")}
                 </span>
+                {liveGuardianEta?.followsRoadNetwork ? (
+                  <span className="block text-xs text-muted-foreground">{t("guardian.etaAlongRoads")}</span>
+                ) : null}
+                {liveGuardianEta?.pending ? (
+                  <span className="block text-xs text-amber-700 dark:text-amber-400">
+                    {t("guardian.etaRouteUpdating")}
+                  </span>
+                ) : null}
               </div>
               
               <div className={`text-3xl font-bold mb-2 ${

@@ -11,6 +11,9 @@ type Prefs = {
   reach_school?: boolean;
   leave_school?: boolean;
   student_drop?: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_start_ist?: string;
+  quiet_end_ist?: string;
 };
 
 type Body = {
@@ -18,6 +21,8 @@ type Body = {
   action: "get" | "set";
   preferences?: Prefs;
 };
+
+const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -41,7 +46,9 @@ serve(async (req) => {
     if (action === "get") {
       const { data, error } = await supabase
         .from("guardian_notification_preferences")
-        .select("student_pickup, reach_school, leave_school, student_drop")
+        .select(
+          "student_pickup, reach_school, leave_school, student_drop, quiet_hours_enabled, quiet_start_ist, quiet_end_ist",
+        )
         .eq("profile_id", guardianId)
         .maybeSingle();
 
@@ -53,6 +60,9 @@ serve(async (req) => {
             reach_school: data?.reach_school !== false,
             leave_school: data?.leave_school !== false,
             student_drop: data?.student_drop !== false,
+            quiet_hours_enabled: data?.quiet_hours_enabled === true,
+            quiet_start_ist: typeof data?.quiet_start_ist === "string" ? data.quiet_start_ist : "22:00",
+            quiet_end_ist: typeof data?.quiet_end_ist === "string" ? data.quiet_end_ist : "06:00",
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -60,18 +70,28 @@ serve(async (req) => {
     }
 
     const prefs = body.preferences ?? {};
+    let start = typeof prefs.quiet_start_ist === "string" ? prefs.quiet_start_ist.trim() : "22:00";
+    let end = typeof prefs.quiet_end_ist === "string" ? prefs.quiet_end_ist.trim() : "06:00";
+    if (!HHMM.test(start)) start = "22:00";
+    if (!HHMM.test(end)) end = "06:00";
+
     const payload = {
       profile_id: guardianId,
       student_pickup: prefs.student_pickup !== false,
       reach_school: prefs.reach_school !== false,
       leave_school: prefs.leave_school !== false,
       student_drop: prefs.student_drop !== false,
+      quiet_hours_enabled: prefs.quiet_hours_enabled === true,
+      quiet_start_ist: start,
+      quiet_end_ist: end,
     };
 
     const { data, error } = await supabase
       .from("guardian_notification_preferences")
       .upsert(payload, { onConflict: "profile_id" })
-      .select("student_pickup, reach_school, leave_school, student_drop")
+      .select(
+        "student_pickup, reach_school, leave_school, student_drop, quiet_hours_enabled, quiet_start_ist, quiet_end_ist",
+      )
       .single();
     if (error) throw error;
 
@@ -85,4 +105,3 @@ serve(async (req) => {
     });
   }
 });
-

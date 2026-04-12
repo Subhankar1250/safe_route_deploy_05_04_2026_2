@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
-import { calculateDistance, calculateEtaFromDistance } from "@/utils/locationUtils";
+import {
+  calculateDistance,
+  calculateEtaFromDistance,
+  formatTravelTime,
+} from "@/utils/locationUtils";
+import { fetchDrivingRouteMeters } from "@/services/roadDrivingRoute";
 
 interface ETACalculation {
   studentId: string;
@@ -162,23 +167,47 @@ class ETACalculationService {
 
       if (!busLocation || !pickupLocation) return null;
 
-      const distance = calculateDistance(
-        busLocation.latitude,
-        busLocation.longitude,
-        pickupLocation.latitude,
-        pickupLocation.longitude,
+      const speed = this.effectiveSpeedKmh(busLocation.speedKmh);
+
+      const route = await fetchDrivingRouteMeters(
+        { lat: busLocation.latitude, lng: busLocation.longitude },
+        { lat: pickupLocation.latitude, lng: pickupLocation.longitude },
       );
 
-      if (!Number.isFinite(distance)) return null;
+      let distanceKm: number;
+      let estimatedArrivalTime: string;
+      let durationMinutes: number;
 
-      const speed = this.effectiveSpeedKmh(busLocation.speedKmh);
-      const etaCalc = calculateEtaFromDistance(distance, speed);
+      if (route) {
+        distanceKm = route.distanceMeters / 1000;
+        if (!Number.isFinite(distanceKm)) return null;
+        if (distanceKm < 0.1) {
+          estimatedArrivalTime = "Arrived";
+          durationMinutes = 0;
+        } else {
+          durationMinutes = Math.max(1, Math.round(route.durationSeconds / 60));
+          estimatedArrivalTime = formatTravelTime(durationMinutes);
+        }
+      } else {
+        const distance = calculateDistance(
+          busLocation.latitude,
+          busLocation.longitude,
+          pickupLocation.latitude,
+          pickupLocation.longitude,
+        );
+        if (!Number.isFinite(distance)) return null;
+        const etaCalc = calculateEtaFromDistance(distance, speed);
+        distanceKm = etaCalc.distanceKm;
+        estimatedArrivalTime = etaCalc.label;
+        durationMinutes =
+          etaCalc.label === "Arrived" ? 0 : Math.max(1, etaCalc.durationMinutes);
+      }
 
       const eta: ETACalculation = {
         studentId,
-        estimatedArrivalTime: etaCalc.label,
-        distanceKm: etaCalc.distanceKm,
-        durationMinutes: etaCalc.label === "Arrived" ? 0 : Math.max(1, etaCalc.durationMinutes),
+        estimatedArrivalTime,
+        distanceKm,
+        durationMinutes,
         lastUpdated: new Date(),
       };
 
