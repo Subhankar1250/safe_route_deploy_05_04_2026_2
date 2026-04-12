@@ -6,6 +6,28 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSimpleAuth } from '@/hooks/useSimpleAuth';
 import { todayIstDate } from '@/utils/istDate';
 
+function parsePickupCoords(
+  lat: unknown,
+  lng: unknown,
+): { lat: number; lng: number } | null {
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
+  return { lat: la, lng: ln };
+}
+
+/** Google Maps search query: prefer exact coordinates when admin set a map pin. */
+function mapsSearchQueryForStudent(s: {
+  pickupPoint?: string;
+  pickup_location_lat?: number | null;
+  pickup_location_lng?: number | null;
+}): string | null {
+  const coords = parsePickupCoords(s.pickup_location_lat, s.pickup_location_lng);
+  if (coords) return `${coords.lat},${coords.lng}`;
+  const text = (s.pickupPoint ?? "").trim();
+  return text.length > 0 ? text : null;
+}
+
 export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup' | 'drop' = 'none') => {
   const [searchTerm, setSearchTerm] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -103,6 +125,10 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
           isOnBoard: false,
           isAbsentToday: absentSet.has(student.id),
           pickupPoint: student.pickup_point,
+          pickup_location_lat:
+            student.pickup_location_lat != null ? Number(student.pickup_location_lat) : undefined,
+          pickup_location_lng:
+            student.pickup_location_lng != null ? Number(student.pickup_location_lng) : undefined,
           guardianName: student.guardian_name,
           guardianMobile: student.guardian_mobile,
           guardian_profile_id: student.guardian_profile_id ?? undefined,
@@ -128,15 +154,16 @@ export const useStudentList = (isActive: boolean, journeyType: 'none' | 'pickup'
 
   const nextMapsTarget = useMemo(() => {
     if (!isActive || journeyType === "none") return null;
-    const q = (s: string | undefined) => (s ?? "").trim();
     if (journeyType === "pickup") {
       const s = filteredStudents.find(
-        (x) => !x.isOnBoard && !x.isAbsentToday && q(x.pickupPoint),
+        (x) => !x.isOnBoard && !x.isAbsentToday && mapsSearchQueryForStudent(x),
       );
-      return s?.pickupPoint ? { studentName: s.name, query: q(s.pickupPoint) } : null;
+      const query = s ? mapsSearchQueryForStudent(s) : null;
+      return s && query ? { studentName: s.name, query } : null;
     }
-    const s = filteredStudents.find((x) => x.isOnBoard && q(x.pickupPoint));
-    return s?.pickupPoint ? { studentName: s.name, query: q(s.pickupPoint) } : null;
+    const s = filteredStudents.find((x) => x.isOnBoard && mapsSearchQueryForStudent(x));
+    const query = s ? mapsSearchQueryForStudent(s) : null;
+    return s && query ? { studentName: s.name, query } : null;
   }, [filteredStudents, isActive, journeyType]);
 
   const sendNotificationToGuardian = async (student: Student, action: "pickup" | "drop") => {

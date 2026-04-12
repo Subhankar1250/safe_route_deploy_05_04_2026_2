@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { randomUuid } from "@/utils/randomUuid";
 import { isSecureBrowserContext, insecureContextHelpMessage } from "@/utils/browserFeatures";
 
@@ -28,6 +28,7 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [insecure, setInsecure] = useState(false);
+  const [startingCamera, setStartingCamera] = useState(false);
 
   useEffect(() => {
     setInsecure(typeof window !== "undefined" && !isSecureBrowserContext());
@@ -64,7 +65,6 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
     }
 
     setCameraError(null);
-    setScanning(true);
 
     const scanConfig = {
       fps,
@@ -83,6 +83,7 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
         },
         () => {},
       );
+      setScanning(true);
     };
 
     try {
@@ -119,7 +120,6 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
         } catch {
           /* fall through */
         }
-        setScanning(false);
         const raw = firstErr instanceof Error ? firstErr.message : String(firstErr);
         let friendly = "Could not open the camera.";
         if (/Permission|NotAllowed|denied/i.test(raw)) {
@@ -139,11 +139,18 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
         .stop()
         .then(() => setScanning(false))
         .catch(() => setScanning(false));
+    } else {
+      setScanning(false);
     }
   };
 
+  const handleStartClick = () => {
+    setStartingCamera(true);
+    void startScanner().finally(() => setStartingCamera(false));
+  };
+
   return (
-    <div className="flex w-full flex-col items-center justify-center gap-4">
+    <div className="flex w-full max-w-full flex-col items-center justify-center gap-3 px-0 sm:gap-4">
       {insecure && (
         <Alert variant="destructive" className="text-left">
           <AlertTriangle className="h-4 w-4" />
@@ -155,30 +162,54 @@ const QrScanner: React.FC<QrScannerProps> = ({ onScan, onError, qrbox = 250, fps
       )}
 
       <div
-        id={scannerElementId}
-        className="aspect-square w-full max-w-sm overflow-hidden rounded-lg border border-border bg-muted/40"
-      />
+        className="relative mx-auto w-full max-w-[min(20rem,calc(100vw-2rem),52dvh)] shrink-0"
+        style={{ aspectRatio: "1" }}
+      >
+        <div
+          id={scannerElementId}
+          className="absolute inset-0 overflow-hidden rounded-xl border border-border bg-muted/50 shadow-inner"
+        />
+
+        {!insecure && !scanning && (
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-xl bg-slate-950/55 p-4 backdrop-blur-[2px] dark:bg-slate-950/65"
+          >
+            {startingCamera ? (
+              <>
+                <Loader2 className="h-10 w-10 animate-spin text-white" aria-hidden />
+                <p className="text-center text-sm font-medium text-white">Starting camera…</p>
+              </>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleStartClick}
+                className="bg-sishu-primary px-6 shadow-lg hover:bg-blue-700"
+                size="lg"
+              >
+                Start camera
+              </Button>
+            )}
+          </div>
+        )}
+
+        {scanning ? (
+          <div className="absolute right-2 top-2 z-20">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="shadow-md"
+              onClick={stopScanner}
+            >
+              Stop camera
+            </Button>
+          </div>
+        ) : null}
+      </div>
 
       {cameraError && !insecure && (
-        <p className="p-2 text-center text-sm text-destructive">{cameraError}</p>
+        <p className="max-w-sm px-1 text-center text-sm text-destructive">{cameraError}</p>
       )}
-
-      <div className="flex flex-wrap justify-center gap-2">
-        {!scanning ? (
-          <Button
-            type="button"
-            onClick={() => void startScanner()}
-            className="bg-sishu-primary hover:bg-blue-700"
-            disabled={insecure}
-          >
-            Start camera
-          </Button>
-        ) : (
-          <Button type="button" onClick={stopScanner} variant="outline">
-            Stop camera
-          </Button>
-        )}
-      </div>
     </div>
   );
 };

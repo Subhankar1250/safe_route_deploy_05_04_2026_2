@@ -150,8 +150,11 @@ const Login: React.FC = () => {
 
   return (
     <div
-      className="relative flex min-h-dvh w-full flex-col items-center justify-start gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(3rem,env(safe-area-inset-bottom,0px))] sm:justify-center sm:px-4 sm:py-10 sm:pb-12"
-      style={loginShellFallback}
+      className="relative flex min-h-dvh w-full flex-col items-center justify-start gap-3 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(2rem,env(safe-area-inset-bottom,0px)+1rem)] touch-pan-y sm:gap-4 sm:px-4 sm:py-6 sm:pb-10 min-[840px]:min-h-dvh min-[840px]:justify-center min-[840px]:py-10"
+      style={{
+        ...loginShellFallback,
+        WebkitOverflowScrolling: "touch",
+      }}
     >
       <div
         className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] animate-pulse-slow rounded-full bg-blue-500/20 blur-3xl motion-reduce:animate-none"
@@ -190,7 +193,7 @@ const Login: React.FC = () => {
           </Alert>
         ) : null}
         <Card
-          className="animate-in fade-in zoom-in-95 w-full max-w-full overflow-x-clip overflow-y-visible border-0 border-white/25 bg-white/90 shadow-2xl shadow-slate-950/50 duration-500 fill-mode-both backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80 dark:shadow-black/60 sm:duration-700"
+          className="animate-in fade-in zoom-in-95 w-full max-w-full shrink-0 overflow-x-hidden overflow-y-visible border-0 border-white/25 bg-white/90 shadow-2xl shadow-slate-950/50 duration-500 fill-mode-both backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80 dark:shadow-black/60 sm:duration-700"
           style={{
             borderRadius: "1.25rem",
             boxShadow:

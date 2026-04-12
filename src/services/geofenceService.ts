@@ -15,12 +15,26 @@ interface PickupPoint {
   student_name: string;
   guardian_name: string;
   guardian_mobile: string;
+  guardian_profile_id?: string | null;
   pickup_point: string;
   pickup_location_lat: number;
   pickup_location_lng: number;
   bus_number: string;
   driver_name: string;
 }
+
+/** Row shape for students query in loadPickupPoints (client types omit tables). */
+type StudentPickupRow = {
+  id: string;
+  name: string;
+  guardian_name: string;
+  guardian_mobile: string | null;
+  guardian_profile_id: string | null;
+  pickup_point: string | null;
+  pickup_location_lat: unknown;
+  pickup_location_lng: unknown;
+  bus_number: string | null;
+};
 
 class GeofenceService {
   private static instance: GeofenceService;
@@ -55,41 +69,53 @@ class GeofenceService {
   // Load pickup points for current driver
   private async loadPickupPoints(driverId: string): Promise<void> {
     try {
+      const { data: drvRow } = await supabase
+        .from("drivers")
+        .select("name")
+        .eq("id", driverId)
+        .maybeSingle();
+      const driverName = (drvRow?.name ?? "").trim();
+
       const { data: students, error } = await supabase
-        .from('students')
-        .select(`
-          id,
-          name,
-          guardian_name,
-          guardian_mobile,
-          pickup_point,
-          pickup_location_lat,
-          pickup_location_lng,
-          bus_number,
-          drivers!inner(name)
-        `)
-        .eq('driver_id', driverId)
-        .not('pickup_location_lat', 'is', null)
-        .not('pickup_location_lng', 'is', null);
+        .from("students")
+        .select(
+          [
+            "id",
+            "name",
+            "guardian_name",
+            "guardian_mobile",
+            "guardian_profile_id",
+            "pickup_point",
+            "pickup_location_lat",
+            "pickup_location_lng",
+            "bus_number",
+          ].join(","),
+        )
+        .eq("driver_id", driverId)
+        .not("pickup_location_lat", "is", null)
+        .not("pickup_location_lng", "is", null);
 
       if (error) throw error;
 
-      this.pickupPoints =
-        students?.map((student) => {
-          const d = student.drivers as { name?: string } | { name?: string }[] | null;
-          const driver = Array.isArray(d) ? d[0] : d;
-          return {
-            student_id: student.id,
-            student_name: student.name,
-            guardian_name: student.guardian_name,
-            guardian_mobile: student.guardian_mobile || "",
-            pickup_point: student.pickup_point,
-            pickup_location_lat: student.pickup_location_lat,
-            pickup_location_lng: student.pickup_location_lng,
-            bus_number: student.bus_number || "",
-            driver_name: driver?.name ?? "",
-          };
-        }) || [];
+      const rows = (students ?? []) as unknown as StudentPickupRow[];
+      this.pickupPoints = [];
+      for (const student of rows) {
+        const lat = Number(student.pickup_location_lat);
+        const lng = Number(student.pickup_location_lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        this.pickupPoints.push({
+          student_id: student.id,
+          student_name: student.name,
+          guardian_name: student.guardian_name,
+          guardian_mobile: student.guardian_mobile || "",
+          guardian_profile_id: student.guardian_profile_id ?? undefined,
+          pickup_point: student.pickup_point ?? "",
+          pickup_location_lat: lat,
+          pickup_location_lng: lng,
+          bus_number: student.bus_number || "",
+          driver_name: driverName,
+        });
+      }
 
       // Create geofences around pickup points
       this.activeGeofences = this.pickupPoints.map(point => ({
@@ -143,33 +169,22 @@ class GeofenceService {
     sendStudentActionNotification({
       student_name: pickupPoint.student_name,
       guardian_name: pickupPoint.guardian_name,
-      guardian_mobile: pickupPoint.guardian_mobile,
-      action: 'pickup',
+      guardian_mobile: pickupPoint.guardian_mobile || undefined,
+      guardian_profile_id: pickupPoint.guardian_profile_id ?? undefined,
+      action: "pickup",
       time: new Date().toLocaleString(),
       bus_number: pickupPoint.bus_number,
       driver_name: pickupPoint.driver_name,
-      pickup_point: pickupPoint.pickup_point
+      pickup_point: pickupPoint.pickup_point || "Pickup stop",
     });
   }
 
-  // Handle geofence exit (departure)
+  // Leaving the pickup geofence: do not send a “home drop” notification (that was misleading).
   private handleGeofenceExit(geofence: GeofenceZone): void {
-    const pickupPoint = this.pickupPoints.find(p => `pickup_${p.student_id}` === geofence.id);
+    const pickupPoint = this.pickupPoints.find((p) => `pickup_${p.student_id}` === geofence.id);
     if (!pickupPoint) return;
 
     console.log(`Bus departed from pickup point: ${geofence.name}`);
-    
-    // Send notification to guardian about departure
-    sendStudentActionNotification({
-      student_name: pickupPoint.student_name,
-      guardian_name: pickupPoint.guardian_name,
-      guardian_mobile: pickupPoint.guardian_mobile,
-      action: 'drop',
-      time: new Date().toLocaleString(),
-      bus_number: pickupPoint.bus_number,
-      driver_name: pickupPoint.driver_name,
-      pickup_point: pickupPoint.pickup_point
-    });
   }
 
   /**

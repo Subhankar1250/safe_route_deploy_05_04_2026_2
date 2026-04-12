@@ -58,11 +58,12 @@ serve(async (req) => {
       ),
     ];
 
-    const guardianIds = await filterGuardianIdsByPreference(supabase, guardianIdsRaw, step);
+    /** Push (FCM): respect per-guardian toggles. Realtime + in-app: all linked guardians on this driver. */
+    const guardianIdsForPush = await filterGuardianIdsByPreference(supabase, guardianIdsRaw, step);
 
-    if (guardianIds.length === 0) {
+    if (guardianIdsRaw.length === 0) {
       return new Response(
-        JSON.stringify({ message: "No guardians for this driver/step preference", sent: 0 }),
+        JSON.stringify({ message: "No guardians linked to this driver’s students", sent: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -86,14 +87,14 @@ serve(async (req) => {
     };
 
     const { ok: rtOk, fail: rtFail } = await broadcastToProfiles(
-      guardianIds,
+      guardianIdsRaw,
       broadcastPayload,
       "notification",
     );
 
     const skipQuiet =
       data?.skip_quiet_hours === true || String(data?.skip_quiet_hours ?? "") === "true";
-    const fcmGuardianIds = await filterOutQuietHoursGuardians(supabase, guardianIds, {
+    const fcmGuardianIds = await filterOutQuietHoursGuardians(supabase, guardianIdsForPush, {
       skipQuiet,
     });
 
@@ -132,7 +133,7 @@ serve(async (req) => {
     const fcm = await sendFcmToTokensIfConfigured(tokens, notification);
 
     await storeGuardianNotifications(supabase, {
-      guardianIds,
+      guardianIds: guardianIdsRaw,
       title,
       body,
       step: step ?? "trip_update",
@@ -154,7 +155,8 @@ serve(async (req) => {
         realtime_broadcast_fail: rtFail,
         driver_id,
         step,
-        guardian_count: guardianIds.length,
+        guardian_count: guardianIdsRaw.length,
+        fcm_guardian_count: guardianIdsForPush.length,
         fcm_tokens: tokens.length,
         fcm: fcm
           ? { mode: fcm.mode, error_count: fcm.errors.length, results: fcm.results }
@@ -165,7 +167,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        guardians: guardianIds.length,
+        guardians: guardianIdsRaw.length,
+        guardians_push_prefs: guardianIdsForPush.length,
         realtime_broadcast: { ok: rtOk, fail: rtFail },
         fcm_tokens: tokens.length,
         fcm_mode: fcm?.mode ?? null,

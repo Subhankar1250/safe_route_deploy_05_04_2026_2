@@ -107,10 +107,13 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
+    min-height: 100dvh;
+    overflow-x: hidden;
     /* Fallback when a CSS chunk fails to load (WebView / flaky network) */
     font-family:
       ui-sans-serif,

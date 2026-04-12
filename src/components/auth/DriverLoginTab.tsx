@@ -180,8 +180,8 @@ const DriverLoginTab: React.FC<DriverLoginTabProps> = ({
         </form>
       </TabsContent>
 
-      <TabsContent value="qr">
-        <CardContent className="flex flex-col items-center space-y-4 px-6 pb-6">
+      <TabsContent value="qr" className="mt-0 outline-none">
+        <CardContent className="flex flex-col items-center space-y-3 px-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-1 sm:space-y-4 sm:px-6 sm:pb-6">
           <ErrorAlert error={error} />
           <QrScanner
             onScan={handleQRScan}

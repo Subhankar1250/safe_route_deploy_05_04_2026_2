@@ -23,18 +23,18 @@ export async function notifyDriverGuardians(params: {
   step: TripPushStep;
   data?: Record<string, string | number | boolean | null | undefined>;
 }): Promise<void> {
-  const { driverId, title, body, step, data } = params;
+  const { driverId, title, body, step, data: payloadData } = params;
   if (!driverId || !title || !body) return;
 
   try {
     const clean: Record<string, unknown> = { step };
-    if (data) {
-      for (const [k, v] of Object.entries(data)) {
+    if (payloadData) {
+      for (const [k, v] of Object.entries(payloadData)) {
         if (v !== undefined && v !== null) clean[k] = v;
       }
     }
 
-    const { error } = await supabase.functions.invoke("notify-driver-guardians", {
+    const { data, error } = await supabase.functions.invoke("notify-driver-guardians", {
       body: {
         driver_id: driverId,
         title,
@@ -45,7 +45,9 @@ export async function notifyDriverGuardians(params: {
     });
 
     if (error) {
-      console.warn("[notify-driver-guardians]", error.message);
+      console.warn("[notify-driver-guardians]", error.message, error);
+    } else if (data && typeof data === "object" && "message" in data && (data as { message?: string }).message) {
+      console.info("[notify-driver-guardians]", (data as { message: string }).message, data);
     }
   } catch (e) {
     console.warn("[notify-driver-guardians]", e);

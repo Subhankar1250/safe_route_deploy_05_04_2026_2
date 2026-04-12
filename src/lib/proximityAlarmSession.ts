@@ -84,6 +84,13 @@ async function runSirenLoop(endAt: number, signal: AbortSignal): Promise<void> {
   } catch {
     /* ignore */
   }
+  const ensureRunning = async () => {
+    try {
+      if (ctx?.state === "suspended") await ctx.resume();
+    } catch {
+      /* ignore */
+    }
+  };
 
   let flip = false;
   const tick = () => {
@@ -99,11 +106,12 @@ async function runSirenLoop(endAt: number, signal: AbortSignal): Promise<void> {
     }
     flip = !flip;
     try {
+      void ensureRunning();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "square";
       osc.frequency.value = flip ? 920 : 680;
-      gain.gain.value = 0.5;
+      gain.gain.value = 0.72;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();

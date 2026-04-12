@@ -147,7 +147,7 @@ const GuardianDashboard: React.FC = () => {
     };
   }, [driverLocation, guardianLocation, guardianRoad]);
 
-  // 500m / 200m / 100m alarms — driving distance along roads when routing is available
+  // 500m / 200m / 100m alarms (Haversine crossings); road meters only for displayed hook distance when ready
   useProximityAlarm({
     enabled: guardianDriverRoadEnabled,
     guardianLocation,

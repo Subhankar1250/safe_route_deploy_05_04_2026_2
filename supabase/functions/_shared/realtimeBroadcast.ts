@@ -46,6 +46,8 @@ export async function broadcastToProfile(
           topic,
           event,
           payload,
+          /** Must match public `supabase.channel(topic)` — private broadcasts do not reach anon/PIN guardians. */
+          private: false,
         },
       ],
     }),

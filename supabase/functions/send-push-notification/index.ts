@@ -87,39 +87,42 @@ serve(async (req) => {
       );
     }
 
+    /** Realtime + in-app center: keep full audience (PIN guardians often have no Supabase Auth). */
     let broadcastProfileIds: string[] = [];
+    /** FCM only: honour guardian_notification_preferences + quiet hours. */
+    let fcmProfileIds: string[] = [];
 
     if (userId) {
       broadcastProfileIds = [userId];
+      fcmProfileIds = [userId];
     } else if (userType) {
       broadcastProfileIds = await collectProfileIdsForUserType(
         supabaseClient,
         userType,
       );
+      fcmProfileIds = [...broadcastProfileIds];
     }
 
     const step = typeof notification?.data?.step === "string" ? notification.data.step : undefined;
+
     if (userId && step) {
-      const filteredIds = await filterGuardianIdsByPreference(supabaseClient, [userId], step);
-      if (filteredIds.length === 0) {
-        broadcastProfileIds = [];
-      }
+      const pushOk = await filterGuardianIdsByPreference(supabaseClient, [userId], step);
+      fcmProfileIds = pushOk.length > 0 ? pushOk : [];
     } else if (userType === "guardian" && step) {
-      broadcastProfileIds = await filterGuardianIdsByPreference(
+      const pushOk = await filterGuardianIdsByPreference(
         supabaseClient,
-        broadcastProfileIds,
+        fcmProfileIds,
         step,
       );
+      fcmProfileIds = pushOk;
     }
 
     const skipQuiet =
       notification?.data?.skip_quiet_hours === true ||
       String(notification?.data?.skip_quiet_hours ?? "") === "true";
-    const fcmProfileIds = await filterOutQuietHoursGuardians(
-      supabaseClient,
-      broadcastProfileIds,
-      { skipQuiet },
-    );
+    fcmProfileIds = await filterOutQuietHoursGuardians(supabaseClient, fcmProfileIds, {
+      skipQuiet,
+    });
     const tokens = await collectTokensForProfileIds(supabaseClient, fcmProfileIds);
 
     const n = notification;

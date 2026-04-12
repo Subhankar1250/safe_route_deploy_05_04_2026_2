@@ -23,8 +23,8 @@ type Params = {
   driverLocation: { latitude: number; longitude: number } | null;
   onTriggered?: (info: { band: ProximityBand; distanceMeters: number }) => void;
   /**
-   * When set, band logic uses driving distance along roads (meters) instead of straight-line Haversine.
-   * While `ready` is false, crossing detection stays disarmed (waits for first route or fallback).
+   * When set and `ready`, `distanceMeters` in state follows road routing; band crossings always use
+   * straight-line meters so 500/200/100 m alarms stay reliable while routing loads or jitters.
    */
   drivingDistance?: { meters: number; ready: boolean };
 };
@@ -69,44 +69,33 @@ export function useProximityAlarm(params: Params): ProximityAlarmState {
       driverLocation.longitude,
     );
 
-    const coordKey = [
-      guardianLocation.latitude,
-      guardianLocation.longitude,
-      driverLocation.latitude,
-      driverLocation.longitude,
-    ]
-      .map((n) => n.toFixed(3))
+    // Driver-only key: guardian GPS jitter was resetting `prev` every tick and blocking inward crossings.
+    const coordKey = [driverLocation.latitude, driverLocation.longitude]
+      .map((n) => n.toFixed(4))
       .join("|");
     if (coordKeyRef.current !== coordKey) {
       coordKeyRef.current = coordKey;
       prevDistanceRef.current = null;
     }
 
-    if (drivingDistance && !drivingDistance.ready) {
-      if (Number.isFinite(straightM)) {
-        setDistanceMeters(straightM);
-        setIsInside(straightM <= 500);
-      }
-      return;
-    }
-
-    const d =
-      drivingDistance?.ready && Number.isFinite(drivingDistance.meters)
-        ? drivingDistance.meters
-        : straightM;
-
-    if (!Number.isFinite(d)) {
+    if (!Number.isFinite(straightM)) {
       prevDistanceRef.current = null;
       setDistanceMeters(null);
       setIsInside(false);
       return;
     }
 
-    setDistanceMeters(d);
-    setIsInside(d <= 500);
+    const displayM =
+      drivingDistance?.ready && Number.isFinite(drivingDistance.meters)
+        ? drivingDistance.meters
+        : straightM;
+    const bandM = straightM;
+
+    setDistanceMeters(displayM);
+    setIsInside(bandM <= 500);
 
     const prev = prevDistanceRef.current;
-    prevDistanceRef.current = d;
+    prevDistanceRef.current = bandM;
 
     if (prev == null || !Number.isFinite(prev)) {
       return;
@@ -115,12 +104,12 @@ export function useProximityAlarm(params: Params): ProximityAlarmState {
     const now = Date.now();
 
     for (const band of BANDS) {
-      if (!(prev > band && d <= band)) continue;
+      if (!(prev > band && bandM <= band)) continue;
       const last = lastBandFireRef.current[band];
       if (last != null && now - last < BAND_COOLDOWN_MS) continue;
       lastBandFireRef.current[band] = now;
       lastTriggeredAtRef.current = now;
-      onTriggeredRef.current?.({ band, distanceMeters: d });
+      onTriggeredRef.current?.({ band, distanceMeters: bandM });
       startProximityAlarmSession();
     }
   }, [enabled, guardianLocation, driverLocation, drivingDistance?.meters, drivingDistance?.ready]);

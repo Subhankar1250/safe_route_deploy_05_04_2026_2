@@ -74,8 +74,16 @@ const StudentItem: React.FC<StudentItemProps> = ({ student, isActive, journeyTyp
             {student.isAbsentToday && (
               <p className="text-xs font-medium text-amber-700">{t("driver.absentToday")}</p>
             )}
-            {student.pickupPoint && (
-              <p className="text-xs text-muted-foreground">{t("driver.pickupPoint")}: {student.pickupPoint}</p>
+            {(student.pickupPoint?.trim() ||
+              (student.pickup_location_lat != null &&
+                student.pickup_location_lng != null &&
+                Number.isFinite(Number(student.pickup_location_lat)) &&
+                Number.isFinite(Number(student.pickup_location_lng)))) && (
+              <p className="text-xs text-muted-foreground">
+                {t("driver.pickupPoint")}:{" "}
+                {student.pickupPoint?.trim() ||
+                  `${Number(student.pickup_location_lat).toFixed(5)}, ${Number(student.pickup_location_lng).toFixed(5)}`}
+              </p>
             )}
           </div>
         </div>

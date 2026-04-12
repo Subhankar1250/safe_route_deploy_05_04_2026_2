@@ -46,7 +46,11 @@ export function GuardianForegroundMessages() {
 
     const channel = supabase
       .channel(topic, {
-        config: { broadcast: { ack: false } },
+        config: {
+          broadcast: { ack: false },
+          /** Public channel — must match Edge REST `private: false` (PIN login = anon only). */
+          private: false,
+        },
       })
       .on(
         "broadcast",

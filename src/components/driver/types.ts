@@ -9,6 +9,9 @@ export interface Student {
   /** Guardian marked absent for today; hide/disable stop to save time. */
   isAbsentToday?: boolean;
   pickupPoint?: string;
+  /** Admin map pin; used for “Open in Maps” when set. */
+  pickup_location_lat?: number | null;
+  pickup_location_lng?: number | null;
   guardianName?: string;
   guardianMobile?: string;
   /** For FCM push alongside SMS/WhatsApp */
