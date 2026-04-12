@@ -73,6 +73,7 @@ const AdminLogin: React.FC = () => {
         id: adminProfile.id as string,
         email: (adminProfile.email as string) || "",
         username: adminProfile.username as string,
+        full_name: (adminProfile.full_name as string | null | undefined) ?? undefined,
         user_type: "admin" as const,
         mobile_number: adminProfile.mobile_number as string | undefined,
       };

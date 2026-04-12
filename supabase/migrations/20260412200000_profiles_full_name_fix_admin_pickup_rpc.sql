@@ -1,5 +1,11 @@
--- Admin: list all student pickup/drop events (same data as guardian Pickup & Drop History), callable with portal profile id.
+-- Optional full name (separate from unique username / display handle).
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS full_name text;
 
+COMMENT ON COLUMN public.profiles.full_name IS 'Optional legal or full name; username remains the unique display handle.';
+
+-- Fix: RETURNS TABLE (id uuid, ...) creates a PL/pgSQL variable "id", so
+-- "WHERE id = ..." against profiles was ambiguous (column vs output param).
 CREATE OR REPLACE FUNCTION public.get_admin_pickup_drop_history(
   p_admin_profile_id uuid,
   p_limit int DEFAULT 200
@@ -65,6 +71,3 @@ BEGIN
   LIMIT v_limit;
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.get_admin_pickup_drop_history(uuid, int) TO anon;
-GRANT EXECUTE ON FUNCTION public.get_admin_pickup_drop_history(uuid, int) TO authenticated;

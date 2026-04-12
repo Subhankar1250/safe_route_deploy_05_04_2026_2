@@ -10,6 +10,8 @@ export interface User {
   id: string;
   email: string;
   username: string;
+  /** Optional full / legal name (profiles.full_name). */
+  full_name?: string | null;
   user_type: "admin" | "driver" | "guardian" | "guardian_admin";
   mobile_number?: string;
   /**
@@ -29,6 +31,7 @@ function finishLogin(profile: Record<string, unknown>, toast: ToastFn): User {
     id: profile.id as string,
     email: (profile.email as string) || "",
     username: profile.username as string,
+    full_name: (profile.full_name as string | null | undefined) ?? undefined,
     user_type: profile.user_type as User["user_type"],
     mobile_number: profile.mobile_number as string | undefined,
   };
@@ -82,6 +85,19 @@ export const useSimpleAuth = () => {
       return null;
     }
   };
+
+  /** Merge into session user and localStorage (e.g. after profile save). */
+  const applyUserPatch = useCallback((patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      localStorage.setItem("sishu_tirtha_user", JSON.stringify(next));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("sishu_profile_updated"));
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const u = readStoredUser();
@@ -313,5 +329,6 @@ export const useSimpleAuth = () => {
     loginGuardianAdminWithPin,
     loginWithDriverQr,
     logout,
+    applyUserPatch,
   };
 };

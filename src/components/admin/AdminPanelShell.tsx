@@ -50,16 +50,24 @@ export default function AdminPanelShell({
 
   useAdminCommandPaletteShortcut(setCommandOpen);
 
-  useEffect(() => {
+  const readHeaderLabel = () => {
     try {
       const raw = localStorage.getItem("sishu_tirtha_user");
-      if (raw) {
-        const u = JSON.parse(raw) as { username?: string };
-        if (u.username) setDisplayName(u.username);
-      }
+      if (!raw) return;
+      const u = JSON.parse(raw) as { username?: string; full_name?: string | null; mobile_number?: string };
+      const primary = (u.full_name && String(u.full_name).trim()) || u.username || "Admin";
+      const mobile = u.mobile_number ? String(u.mobile_number).replace(/\D/g, "").slice(-10) : "";
+      setDisplayName(mobile ? `${primary} · ${mobile}` : primary);
     } catch {
       /* ignore */
     }
+  };
+
+  useEffect(() => {
+    readHeaderLabel();
+    const onUpdate = () => readHeaderLabel();
+    window.addEventListener("sishu_profile_updated", onUpdate);
+    return () => window.removeEventListener("sishu_profile_updated", onUpdate);
   }, []);
 
   return (
